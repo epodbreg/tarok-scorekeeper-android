@@ -1,0 +1,183 @@
+package com.epodbreg.stih
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.epodbreg.stih.data.SessionManager
+import com.epodbreg.stih.data.SettingsManager
+import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.Player
+import com.epodbreg.stih.ui.GameViewModel
+import com.epodbreg.stih.ui.screens.CreditsScreen
+import com.epodbreg.stih.ui.screens.HomeScreen
+import com.epodbreg.stih.ui.screens.MainGameScreen
+import com.epodbreg.stih.ui.screens.PlayerSetupScreen
+import com.epodbreg.stih.ui.screens.ResumeSessionSheet
+import com.epodbreg.stih.ui.screens.SessionHistoryScreen
+import com.epodbreg.stih.ui.screens.SessionSummaryScreen
+import com.epodbreg.stih.ui.screens.SettingsScreen
+import com.epodbreg.stih.ui.theme.StihTheme
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            StihTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    StihApp()
+                }
+            }
+        }
+    }
+}
+
+private sealed interface Screen {
+    data object Home : Screen
+    data object PlayerSetup : Screen
+    data object Game : Screen
+    data object History : Screen
+    data object Settings : Screen
+    data object Credits : Screen
+    data class Summary(val session: GameSession) : Screen
+}
+
+@Composable
+private fun StihApp() {
+    val context = LocalContext.current
+    val sessionManager = remember { SessionManager.get(context) }
+    val settings = remember { SettingsManager.get(context) }
+
+    var screen: Screen by remember { mutableStateOf(Screen.Home) }
+    var setupPrefills by remember { mutableStateOf(listOf<String>()) }
+    var gameViewModel by remember { mutableStateOf<GameViewModel?>(null) }
+    var showResumePrompt by remember {
+        mutableStateOf(sessionManager.activeSession?.games?.isNotEmpty() == true)
+    }
+
+    fun startGame(players: List<Player>) {
+        if (sessionManager.activeSession == null) {
+            sessionManager.startNewSession(GameSession(players = players))
+        }
+        gameViewModel = GameViewModel(sessionManager, settings, players)
+        screen = Screen.Game
+    }
+
+    fun resumeActiveSession() {
+        val session = sessionManager.activeSession ?: return
+        gameViewModel = GameViewModel(sessionManager, settings, session.players)
+        screen = Screen.Game
+    }
+
+    when (val s = screen) {
+        Screen.Home -> {
+            HomeScreen(
+                activeSession = sessionManager.activeSession,
+                onStartNew = {
+                    setupPrefills = emptyList()
+                    screen = Screen.PlayerSetup
+                },
+                onResume = { resumeActiveSession() },
+                onHistory = { screen = Screen.History },
+                onSettings = { screen = Screen.Settings },
+                onCredits = { screen = Screen.Credits },
+            )
+            if (showResumePrompt) {
+                ResumeSessionSheet(
+                    session = sessionManager.activeSession,
+                    onResume = {
+                        showResumePrompt = false
+                        resumeActiveSession()
+                    },
+                    onStartNew = {
+                        showResumePrompt = false
+                        sessionManager.clearActiveSession()
+                        setupPrefills = emptyList()
+                        screen = Screen.PlayerSetup
+                    },
+                    onDiscard = {
+                        showResumePrompt = false
+                        sessionManager.clearActiveSession()
+                    },
+                    onDismiss = { showResumePrompt = false },
+                )
+            }
+        }
+
+        Screen.PlayerSetup -> PlayerSetupScreen(
+            prefills = setupPrefills,
+            onStart = { players ->
+                sessionManager.clearActiveSession()
+                startGame(players)
+            },
+            onCancel = { screen = Screen.Home },
+        )
+
+        Screen.Game -> {
+            val vm = gameViewModel
+            if (vm != null) {
+                MainGameScreen(
+                    viewModel = vm,
+                    onSessionCompleted = { completed -> screen = Screen.Summary(completed) },
+                    onExitWithoutSaving = {
+                        screen = Screen.Home
+                        showResumePrompt = sessionManager.activeSession?.games?.isNotEmpty() == true
+                    },
+                )
+            } else {
+                screen = Screen.Home
+            }
+        }
+
+        is Screen.Summary -> SessionSummaryScreen(
+            session = s.session,
+            onSave = {
+                sessionManager.saveSession(s.session)
+                gameViewModel = null
+                screen = Screen.Home
+            },
+            onNewWithSamePlayers = {
+                sessionManager.saveSession(s.session)
+                gameViewModel = null
+                setupPrefills = s.session.playerNames
+                screen = Screen.PlayerSetup
+            },
+            onDiscard = {
+                sessionManager.clearActiveSession()
+                gameViewModel = null
+                screen = Screen.Home
+            },
+        )
+
+        Screen.History -> SessionHistoryScreen(
+            sessionManager = sessionManager,
+            onBack = { screen = Screen.Home },
+            onResumeSession = { session ->
+                sessionManager.setActiveSessionDirect(session.copy(endTime = null))
+                resumeActiveSession()
+            },
+            onNewWithPlayers = { players ->
+                setupPrefills = players.map { it.name }
+                screen = Screen.PlayerSetup
+            },
+        )
+
+        Screen.Settings -> SettingsScreen(
+            settings = settings,
+            sessionManager = sessionManager,
+            onBack = { screen = Screen.Home },
+        )
+
+        Screen.Credits -> CreditsScreen(onBack = { screen = Screen.Home })
+    }
+}
