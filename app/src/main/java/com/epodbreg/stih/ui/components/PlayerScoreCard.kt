@@ -66,7 +66,8 @@ fun PlayerScoreCard(
     gameHistory: List<GameEntry>,
     onExpandToggle: () -> Unit,
     onPenalty: () -> Unit,
-    onRadlcTap: (Int) -> Unit,
+    /** Null = auto-radlci lock: pips are read-only status. */
+    onRadlcTap: ((Int) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val tint = when {

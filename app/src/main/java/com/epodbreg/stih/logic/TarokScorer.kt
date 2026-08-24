@@ -1,6 +1,7 @@
 package com.epodbreg.stih.logic
 
 import com.epodbreg.stih.model.GameEntry
+import com.epodbreg.stih.model.GeneralRulesConfig
 import com.epodbreg.stih.model.HandOutcome
 import com.epodbreg.stih.model.Player
 import com.epodbreg.stih.model.PointsBreakdown
@@ -21,17 +22,38 @@ object TarokScorer {
     /** Result of processing: the final entry plus the updated player list. */
     data class Result(val entry: GameEntry, val players: List<Player>)
 
-    fun processGame(baseEntry: GameEntry, players: List<Player>): Result {
+    fun processGame(
+        baseEntry: GameEntry,
+        players: List<Player>,
+        rules: GeneralRulesConfig = GeneralRulesConfig(),
+    ): Result {
         if (baseEntry.contract == TarokContract.KLOP) {
-            return processKlopGame(baseEntry, players)
+            return processKlopGame(baseEntry, players, rules)
         }
 
-        // Penalty/reward games: never doubled, never give radlci
+        // Mond kazen and renons: never doubled, never give or consume radlci
         if (baseEntry.contract == TarokContract.PENALTY_MOND ||
-            baseEntry.contract == TarokContract.PENALTY_RENONS ||
-            baseEntry.contract == TarokContract.PAGAT_BONUS
+            baseEntry.contract == TarokContract.PENALTY_RENONS
         ) {
             return Result(baseEntry, players)
+        }
+
+        // Pagat quick-award: an unused radlc doubles it but is NEVER consumed —
+        // a radlc is only used up by the declarer of a real played game.
+        if (baseEntry.contract == TarokContract.PAGAT_BONUS) {
+            val declarer = players.firstOrNull { it.name == baseEntry.declarerName }
+            if (declarer == null || !declarer.hasUnusedRadlci) {
+                return Result(baseEntry, players)
+            }
+            val doubled = baseEntry.totalPoints * 2
+            return Result(
+                baseEntry.copy(
+                    totalPoints = doubled,
+                    rawTotalPoints = baseEntry.totalPoints,
+                    pointsBreakdown = baseEntry.pointsBreakdown.copy(gamePoints = doubled),
+                ),
+                players,
+            )
         }
 
         val mutablePlayers = players.toMutableList()
@@ -86,21 +108,26 @@ object TarokScorer {
         return Result(entry, mutablePlayers)
     }
 
-    private fun processKlopGame(baseEntry: GameEntry, players: List<Player>): Result {
+    private fun processKlopGame(
+        baseEntry: GameEntry,
+        players: List<Player>,
+        rules: GeneralRulesConfig,
+    ): Result {
         val rawKlopScores = baseEntry.rawKlopScores ?: baseEntry.klopScores
             ?: return Result(baseEntry, players)
 
         val mutablePlayers = players.toMutableList()
         val finalScores = mutableMapOf<String, Int>()
 
-        // Score first, using existing (old) radlci
+        // Score first, using existing (old) radlci. "Klop brez radlca":
+        // when radlcDoublesKlop is off, radlci neither double nor get consumed.
         for (idx in mutablePlayers.indices) {
             val player = mutablePlayers[idx]
             val rawScore = rawKlopScores[player.name] ?: 0
             var adjustedScore = rawScore
 
             val radlcIdx = player.radlci.indexOfFirst { !it }
-            if (rawScore != 0 && player.radlci.isNotEmpty() && radlcIdx >= 0) {
+            if (rules.radlcDoublesKlop && rawScore != 0 && player.radlci.isNotEmpty() && radlcIdx >= 0) {
                 adjustedScore = rawScore * 2
                 // Only cancel the radlc on a win (prazen klop)
                 if (rawScore == 70) {

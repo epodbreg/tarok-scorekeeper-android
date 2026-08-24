@@ -98,6 +98,16 @@ fun MainGameScreen(
     var penaltyPlayerId by remember { mutableStateOf<UUID?>(null) }
     var isHistoryExpanded by remember { mutableStateOf(false) }
     var obvezniKlopPreselected by remember { mutableStateOf<TarokContract?>(null) }
+    var obvezniKlopPlayer by remember { mutableStateOf<String?>(null) }
+
+    // Consume the trigger immediately so every trigger is a fresh transition —
+    // a missed popup can never permanently swallow future triggers.
+    LaunchedEffect(viewModel.obvezniKlopTrigger) {
+        viewModel.obvezniKlopTrigger?.let { name ->
+            obvezniKlopPlayer = name
+            viewModel.clearObvezniKlopTrigger()
+        }
+    }
 
     // Undo snackbar state for deleted games
     var recentlyDeleted by remember { mutableStateOf<GameEntry?>(null) }
@@ -208,7 +218,9 @@ fun MainGameScreen(
                                 }
                             },
                             onPenalty = { penaltyPlayerId = player.id },
-                            onRadlcTap = { index -> viewModel.toggleRadlc(player.id, index) },
+                            // Auto-radlci lock: pips are read-only status unless disabled
+                            onRadlcTap = if (viewModel.settings.autoRadlci) null
+                            else { index -> viewModel.toggleRadlc(player.id, index) },
                             modifier = Modifier.padding(horizontal = 12.dp),
                         )
                     }
@@ -340,17 +352,16 @@ fun MainGameScreen(
             }
 
             // Obvezni klop overlay — non-dismissible until a choice is made
-            val obvezniPlayer = viewModel.obvezniKlopTrigger
-            if (obvezniPlayer != null) {
+            obvezniKlopPlayer?.let { name ->
                 ObvezniKlopOverlay(
-                    playerName = obvezniPlayer,
+                    playerName = name,
                     onKlop = {
-                        viewModel.clearObvezniKlopTrigger()
+                        obvezniKlopPlayer = null
                         obvezniKlopPreselected = TarokContract.KLOP
                         editState = EditState.Adding
                     },
                     onSoloBrez = {
-                        viewModel.clearObvezniKlopTrigger()
+                        obvezniKlopPlayer = null
                         obvezniKlopPreselected = TarokContract.SOLO_BREZ
                         editState = EditState.Adding
                     },
@@ -367,7 +378,9 @@ fun MainGameScreen(
             settings = viewModel.settings,
             initialContract = obvezniKlopPreselected,
             onSave = { entry ->
-                val result = TarokScorer.processGame(entry, viewModel.players)
+                val result = TarokScorer.processGame(
+                    entry, viewModel.players, viewModel.settings.currentRuleSet.generalRules,
+                )
                 viewModel.addProcessedGameEntry(result.entry, result.players)
                 editState = EditState.Idle
                 obvezniKlopPreselected = null
@@ -423,7 +436,12 @@ fun MainGameScreen(
                         bonuses = emptyList(),
                         totalPoints = points,
                     )
-                    viewModel.addProcessedGameEntry(entry, viewModel.players, advancesDealer = false)
+                    // Through the scorer: pagat quick-award gets radlc doubling
+                    // (without consuming); mond/renons pass through untouched.
+                    val result = TarokScorer.processGame(
+                        entry, viewModel.players, viewModel.settings.currentRuleSet.generalRules,
+                    )
+                    viewModel.addProcessedGameEntry(result.entry, result.players)
                     penaltyPlayerId = null
                 },
                 onDismiss = { penaltyPlayerId = null },

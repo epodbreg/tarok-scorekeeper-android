@@ -43,6 +43,14 @@ class SettingsManager(context: Context) {
     var obvezniKlopOnZeroOutcome: Boolean by mutableStateOf(prefs.getBoolean("obvezniKlopOnZeroOutcome", true))
         private set
 
+    /** Round-score trigger step: fire when a live net score hits a non-negative multiple of this. */
+    var obvezniKlopStep: Int by mutableStateOf(prefs.getInt("obvezniKlopStep", 100))
+        private set
+
+    /** When on, radlc pips are read-only status — no manual tap-to-toggle. */
+    var autoRadlci: Boolean by mutableStateOf(prefs.getBoolean("autoRadlci", true))
+        private set
+
     var customRules: List<CustomScoringRules> by mutableStateOf(loadCustomRules())
         private set
     var currentRuleSet: CustomScoringRules by mutableStateOf(CustomScoringRules.standard())
@@ -93,15 +101,43 @@ class SettingsManager(context: Context) {
         prefs.edit().putBoolean("obvezniKlopOnZeroOutcome", value).apply()
     }
 
-    /** Update the active rule set in place (e.g. toggles bound to generalRules). */
+    fun updateObvezniKlopStep(value: Int) {
+        obvezniKlopStep = value
+        prefs.edit().putInt("obvezniKlopStep", value).apply()
+    }
+
+    fun updateAutoRadlci(value: Boolean) {
+        autoRadlci = value
+        prefs.edit().putBoolean("autoRadlci", value).apply()
+    }
+
+    /**
+     * Update the active rule set in place (e.g. toggles bound to generalRules).
+     * Always persisted as an override so quick-toggles survive relaunch even
+     * for the predefined "Standard" rule set.
+     */
     fun updateCurrentRuleSet(rules: CustomScoringRules) {
         currentRuleSet = rules
+        saveCurrentRuleSetOverride()
         if (houseScoringRules != "Standard") {
             val idx = customRules.indexOfFirst { it.name == rules.name }
             if (idx >= 0) {
                 customRules = customRules.toMutableList().also { it[idx] = rules }
                 saveCustomRules()
             }
+        }
+    }
+
+    private fun saveCurrentRuleSetOverride() {
+        prefs.edit().putString("currentRuleSetOverride", json.encodeToString(currentRuleSet)).apply()
+    }
+
+    private fun loadCurrentRuleSetOverride(): CustomScoringRules? {
+        val raw = prefs.getString("currentRuleSetOverride", null) ?: return null
+        return try {
+            json.decodeFromString<CustomScoringRules>(raw)
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -121,9 +157,17 @@ class SettingsManager(context: Context) {
     }
 
     private fun reloadCurrentRuleSet() {
-        currentRuleSet = predefinedRules[houseScoringRules]
-            ?: customRules.firstOrNull { it.name == houseScoringRules }
-            ?: CustomScoringRules.standard()
+        // Prefer the saved override while it still belongs to the selected rule
+        // set; switching rule sets loads the base and re-saves it as the override.
+        val override = loadCurrentRuleSetOverride()
+        currentRuleSet = if (override != null && override.name == houseScoringRules) {
+            override
+        } else {
+            val base = predefinedRules[houseScoringRules]
+                ?: customRules.firstOrNull { it.name == houseScoringRules }
+                ?: CustomScoringRules.standard()
+            base.also { currentRuleSet = it; saveCurrentRuleSetOverride() }
+        }
     }
 
     fun addOrUpdateCustomRuleSet(rules: CustomScoringRules, originalName: String? = null) {

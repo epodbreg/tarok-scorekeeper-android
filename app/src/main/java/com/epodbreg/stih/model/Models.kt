@@ -234,7 +234,14 @@ data class GameSession(
     val endTime: Long? = null,
     val games: List<GameEntry> = emptyList(),
     val finalScores: List<PlayerScore>? = null,
+    /** Derived dealer index persisted for backwards compatibility and display. */
     val currentDealerIndex: Int = 0,
+    /**
+     * Manual dealer adjustment. The effective dealer is
+     * (dealerManualOffset + count of dealer-advancing games) mod playerCount.
+     * Null on sessions saved before this field existed — back-solved on load.
+     */
+    val dealerManualOffset: Int? = null,
 ) {
     val playerNames: List<String> get() = players.map { it.name }
     val isActive: Boolean get() = endTime == null

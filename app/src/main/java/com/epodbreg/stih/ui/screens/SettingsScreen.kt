@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -225,12 +226,66 @@ fun SettingsScreen(
                             checked = settings.obvezniKlopOnRoundScore,
                             onCheckedChange = { settings.setObvezniKlopRoundScore(it) },
                         )
+                        if (settings.obvezniKlopOnRoundScore) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(start = 16.dp),
+                            ) {
+                                Text(
+                                    "Korak:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                listOf(100, 500, 1000).forEach { step ->
+                                    val selected = settings.obvezniKlopStep == step
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(
+                                                if (selected) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                            .clickable { settings.updateObvezniKlopStep(step) }
+                                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                                    ) {
+                                        Text(
+                                            "$step",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (selected) Color.White
+                                            else MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         SettingsSubToggleRow(
                             title = "Ko je izid igre enak 0",
                             checked = settings.obvezniKlopOnZeroOutcome,
                             onCheckedChange = { settings.setObvezniKlopZeroOutcome(it) },
                         )
                     }
+                    HorizontalDivider()
+                    SettingsToggleRow(
+                        title = "Samodejni radlci",
+                        subtitle = "Radlci se vodijo samodejno — brez ročnega vklapljanja s pritiskom",
+                        checked = settings.autoRadlci,
+                        onCheckedChange = { settings.updateAutoRadlci(it) },
+                    )
+                    HorizontalDivider()
+                    SettingsToggleRow(
+                        title = "Radlc podvoji klop",
+                        subtitle = "Neuporabljen radlc podvoji klop rezultat (prazen klop ga porabi)",
+                        checked = settings.currentRuleSet.generalRules.radlcDoublesKlop,
+                        onCheckedChange = {
+                            settings.updateCurrentRuleSet(
+                                settings.currentRuleSet.copy(
+                                    generalRules = settings.currentRuleSet.generalRules.copy(radlcDoublesKlop = it)
+                                )
+                            )
+                        },
+                    )
                     HorizontalDivider()
                     SettingsToggleRow(
                         title = "Radlci za soigralce",

@@ -31,6 +31,11 @@ data class GeneralRulesConfig(
     val radlcPenaltyPerUnused: Int = 100,
     /** Whether unused radlci give an end-of-session penalty */
     val radlcPenaltyEnabled: Boolean = true,
+    /**
+     * "Klop brez radlca": whether an unused radlc doubles klop scores (and a
+     * prazen klop consumes it). Klop always *grants* radlci regardless.
+     */
+    val radlcDoublesKlop: Boolean = true,
     val enableAutoScoring: Boolean = true,
     val valatWithGamePoints: Boolean = false,
 )

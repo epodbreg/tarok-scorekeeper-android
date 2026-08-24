@@ -25,11 +25,29 @@ class GameViewModel(
 
     var players: List<Player> by mutableStateOf(initialPlayers)
     var gameHistory: List<GameEntry> by mutableStateOf(emptyList())
-    var currentDealerIndex: Int by mutableStateOf(0)
     var sessionStartTime: Long by mutableStateOf(System.currentTimeMillis())
     var obvezniKlopTrigger: String? by mutableStateOf(null)
 
+    /**
+     * Manual dealer adjustment. The dealer is DERIVED, not stored:
+     * (dealerManualOffset + count of dealer-advancing games) mod playerCount,
+     * so delete, re-add, edit, and undo all stay correct automatically.
+     */
+    var dealerManualOffset: Int by mutableStateOf(0)
+        private set
+
     private var originalPlayerOrder: List<Player> = initialPlayers
+
+    /** Games that rotate the deal — everything except quick penalties/awards. */
+    private val dealerAdvancingCount: Int
+        get() = gameHistory.count { it.contract !in NON_ADVANCING_CONTRACTS }
+
+    val currentDealerIndex: Int
+        get() {
+            val n = originalPlayerOrder.size
+            if (n == 0) return 0
+            return Math.floorMod(dealerManualOffset + dealerAdvancingCount, n)
+        }
 
     fun restoreSessionIfNeeded() {
         val existing = sessionManager.activeSession ?: return
@@ -39,7 +57,12 @@ class GameViewModel(
         originalPlayerOrder = existing.players
         gameHistory = existing.games
         sessionStartTime = existing.startTime
-        currentDealerIndex = existing.currentDealerIndex
+        // Migration: old sessions stored only the dealer index — back-solve the
+        // offset so the dealer doesn't jump.
+        val n = existing.players.size
+        val advancing = existing.games.count { it.contract !in NON_ADVANCING_CONTRACTS }
+        dealerManualOffset = existing.dealerManualOffset
+            ?: Math.floorMod(existing.currentDealerIndex - advancing, n)
         recalculate(save = false)
     }
 
@@ -51,6 +74,7 @@ class GameViewModel(
                 games = gameHistory,
                 startTime = sessionStartTime,
                 currentDealerIndex = currentDealerIndex,
+                dealerManualOffset = dealerManualOffset,
             )
         )
     }
@@ -70,7 +94,7 @@ class GameViewModel(
                 totalPoints = oldGame.rawTotalPoints,
                 klopScores = oldGame.rawKlopScores,
             )
-            val result = TarokScorer.processGame(baseGame, currentPlayers)
+            val result = TarokScorer.processGame(baseGame, currentPlayers, settings.currentRuleSet.generalRules)
             currentPlayers = applyGameScore(result.entry, result.players, add = true)
             newEntries.add(result.entry)
         }
@@ -94,7 +118,6 @@ class GameViewModel(
         entry: GameEntry,
         updatedPlayers: List<Player>,
         checkObvezniKlop: Boolean = true,
-        advancesDealer: Boolean = true,
     ) {
         val prevLiveNets = if (checkObvezniKlop) {
             players.associate { it.name to liveNetScore(it) }
@@ -102,7 +125,7 @@ class GameViewModel(
 
         gameHistory = gameHistory + entry
         players = applyGameScore(entry, updatedPlayers, add = true)
-        if (advancesDealer) advanceDealer() else saveCurrentState()
+        saveCurrentState() // dealer is derived from history — no explicit advance
 
         prevLiveNets?.let { checkObvezniKlop(it, entry) }
     }
@@ -111,7 +134,7 @@ class GameViewModel(
     fun addRawGameEntry(entry: GameEntry) {
         gameHistory = gameHistory + entry
         players = applyGameScore(entry, players, add = true)
-        advanceDealer()
+        saveCurrentState()
     }
 
     fun setPlayersDirect(newPlayers: List<Player>) {
@@ -134,12 +157,14 @@ class GameViewModel(
 
         var triggerPlayer: Player? = null
 
-        // Trigger 1: any player's live net score changed to a non-negative multiple of 100
-        if (settings.obvezniKlopOnRoundScore) {
+        // Trigger 1: any player's live net score changed to a non-negative
+        // multiple of the configured step (zero counts)
+        val step = settings.obvezniKlopStep
+        if (settings.obvezniKlopOnRoundScore && step > 0) {
             triggerPlayer = players.firstOrNull { player ->
                 val prev = previousLiveNetScores[player.name] ?: player.score
                 val curr = liveNetScore(player)
-                curr != prev && curr >= 0 && curr % 100 == 0
+                curr != prev && curr >= 0 && curr % step == 0
             }
         }
 
@@ -235,24 +260,23 @@ class GameViewModel(
     }
 
     fun advanceDealer() {
-        if (originalPlayerOrder.isEmpty()) {
-            currentDealerIndex = 0
-        } else {
-            currentDealerIndex = (currentDealerIndex + 1) % originalPlayerOrder.size
-        }
+        val n = originalPlayerOrder.size
+        if (n == 0) return
+        dealerManualOffset = Math.floorMod(dealerManualOffset + 1, n)
         saveCurrentState()
     }
 
     fun reverseDealer() {
-        if (originalPlayerOrder.isEmpty()) return
-        currentDealerIndex =
-            (currentDealerIndex - 1 + originalPlayerOrder.size) % originalPlayerOrder.size
+        val n = originalPlayerOrder.size
+        if (n == 0) return
+        dealerManualOffset = Math.floorMod(dealerManualOffset - 1, n)
         saveCurrentState()
     }
 
     fun setDealer(index: Int) {
-        if (index !in originalPlayerOrder.indices) return
-        currentDealerIndex = index
+        val n = originalPlayerOrder.size
+        if (index !in 0 until n) return
+        dealerManualOffset = Math.floorMod(index - dealerAdvancingCount, n)
         saveCurrentState()
     }
 
@@ -268,4 +292,13 @@ class GameViewModel(
         get() = GameSession.computeSlepaci(gameHistory)
 
     fun captureScores(): Map<String, Int> = players.associate { it.name to it.score }
+
+    companion object {
+        /** Quick penalties/awards outside the normal game flow don't rotate the deal. */
+        val NON_ADVANCING_CONTRACTS: Set<TarokContract> = setOf(
+            TarokContract.PENALTY_MOND,
+            TarokContract.PENALTY_RENONS,
+            TarokContract.PAGAT_BONUS,
+        )
+    }
 }
