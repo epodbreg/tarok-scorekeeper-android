@@ -38,11 +38,11 @@ object TarokScorer {
             return Result(baseEntry, players)
         }
 
-        // Pagat quick-award: an unused radlc doubles it but is NEVER consumed —
-        // a radlc is only used up by the declarer of a real played game.
+        // Pagat quick-award: an unused radlc doubles it (when the rule set allows)
+        // but is NEVER consumed — only the declarer of a real played game uses one up.
         if (baseEntry.contract == TarokContract.PAGAT_BONUS) {
             val declarer = players.firstOrNull { it.name == baseEntry.declarerName }
-            if (declarer == null || !declarer.hasUnusedRadlci) {
+            if (!rules.radlcDoublesPagat || declarer == null || !declarer.hasUnusedRadlci) {
                 return Result(baseEntry, players)
             }
             val doubled = baseEntry.totalPoints * 2
@@ -85,25 +85,16 @@ object TarokScorer {
             }
         }
 
-        val entry = GameEntry(
-            id = baseEntry.id,
-            contract = baseEntry.contract,
-            declarerName = baseEntry.declarerName,
-            partnerName = baseEntry.partnerName,
-            outcome = baseEntry.outcome,
+        // copy() so every other field (e.g. kontraCallerName) survives scoring
+        val entry = baseEntry.copy(
             pointsBreakdown = PointsBreakdown(
                 gamePoints = finalPoints,
                 difference = baseEntry.pointsBreakdown.difference,
                 kontraLevel = baseEntry.pointsBreakdown.kontraLevel,
             ),
-            bonuses = baseEntry.bonuses,
             totalPoints = finalPoints,
-            timestamp = baseEntry.timestamp,
             klopScores = null,
-            rawKlopScores = baseEntry.rawKlopScores,
             rawTotalPoints = baseEntry.totalPoints,
-            underlyingGame = baseEntry.underlyingGame,
-            isValatAnnounced = baseEntry.isValatAnnounced,
         )
         return Result(entry, mutablePlayers)
     }

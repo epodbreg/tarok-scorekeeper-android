@@ -51,6 +51,15 @@ class SettingsManager(context: Context) {
     var autoRadlci: Boolean by mutableStateOf(prefs.getBoolean("autoRadlci", true))
         private set
 
+    /** The player whose statistics the stats screen shows; remembered across launches. */
+    var myPlayerName: String by mutableStateOf(prefs.getString("myPlayerName", "") ?: "")
+        private set
+
+    fun updateMyPlayerName(value: String) {
+        myPlayerName = value
+        prefs.edit().putString("myPlayerName", value).apply()
+    }
+
     var customRules: List<CustomScoringRules> by mutableStateOf(loadCustomRules())
         private set
     var currentRuleSet: CustomScoringRules by mutableStateOf(CustomScoringRules.standard())

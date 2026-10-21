@@ -93,13 +93,13 @@ fun SessionSummaryScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (session.games.isNotEmpty()) {
+                if (session.roundCount > 0) {
                     Icon(
                         Icons.Filled.SportsEsports, contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        TarokStrings.gameCountText(session.games.size),
+                        TarokStrings.rundaCountText(session.roundCount),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -135,6 +135,10 @@ fun SessionSummaryScreen(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
                     )
                 }
+            }
+
+            if (session.roundCount > 0) {
+                item { EveningStatsSection(session) }
             }
 
             if (session.games.isNotEmpty()) {

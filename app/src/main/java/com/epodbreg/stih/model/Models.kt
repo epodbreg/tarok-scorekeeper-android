@@ -69,6 +69,13 @@ enum class TarokContract {
     val isPenalty: Boolean
         get() = this == PENALTY_MOND || this == PENALTY_RENONS
 
+    /**
+     * Side entries (penalties/awards) are bookkeeping, not played rounds:
+     * they don't advance the dealer, don't count as games, and aren't stats rounds.
+     */
+    val isSideEntry: Boolean
+        get() = this == PENALTY_MOND || this == PENALTY_RENONS || this == PAGAT_BONUS
+
     val hasFixedScoring: Boolean
         get() = this in setOf(BERAC, ODPRTI_BERAC, BARVNI_VALAT, VALAT, PENALTY_MOND, PENALTY_RENONS)
 
@@ -201,7 +208,29 @@ data class GameEntry(
     val underlyingGame: TarokContract? = null,
     /** Whether valat was announced (napovedan) vs silent (tihi) */
     val isValatAnnounced: Boolean? = null,
-)
+    /** Opponent who called the game-level kontra (optional; null for older entries) */
+    val kontraCallerName: String? = null,
+) {
+    /**
+     * Copy with every reference to [oldName] replaced by [newName]
+     * (declarer, partner, kontra caller, klop score keys). Identity is preserved.
+     */
+    fun renamingPlayer(oldName: String, newName: String): GameEntry {
+        fun swap(name: String) = if (name == oldName) newName else name
+        fun swapKeys(scores: Map<String, Int>?): Map<String, Int>? = scores?.let { map ->
+            val result = mutableMapOf<String, Int>()
+            map.forEach { (k, v) -> result.merge(swap(k), v, Int::plus) }
+            result
+        }
+        return copy(
+            declarerName = swap(declarerName),
+            partnerName = partnerName?.let(::swap),
+            klopScores = swapKeys(klopScores),
+            rawKlopScores = swapKeys(rawKlopScores),
+            kontraCallerName = kontraCallerName?.let(::swap),
+        )
+    }
+}
 
 @Serializable
 data class Player(
@@ -246,6 +275,23 @@ data class GameSession(
     val playerNames: List<String> get() = players.map { it.name }
     val isActive: Boolean get() = endTime == null
 
+    /** Played rounds — side entries (mond kazen, renons, pagat award) excluded */
+    val roundCount: Int get() = games.count { !it.contract.isSideEntry }
+
+    /** Both names sat at this table — merging them would fuse two real people. */
+    fun hasConflict(oldName: String, newName: String): Boolean =
+        oldName != newName && oldName in playerNames && newName in playerNames
+
+    /** Copy with [oldName] replaced everywhere. Caller must check [hasConflict] first. */
+    fun renamingPlayer(oldName: String, newName: String): GameSession {
+        if (oldName !in playerNames) return this
+        return copy(
+            players = players.map { if (it.name == oldName) it.copy(name = newName) else it },
+            games = games.map { it.renamingPlayer(oldName, newName) },
+            finalScores = finalScores?.map { if (it.name == oldName) it.copy(name = newName) else it },
+        )
+    }
+
     /**
      * Players who have been soigralec/ka the most times (only 1/2/3/V/BV contracts).
      * Returns a set so ties are handled. Empty if nobody has been partner yet.
@@ -278,10 +324,37 @@ data class GameSession(
 object TarokStrings {
     const val ZARUFAL = "Zarufal_a"
 
-    fun gameCountText(count: Int): String = when (count) {
-        1 -> "1 igra"
-        2 -> "2 igri"
-        3, 4 -> "$count igre"
-        else -> "$count iger"
+    /** Placeholder seat names ("Igralec_ka 3") are hidden from pickers and stats. */
+    private val PLACEHOLDER = Regex("""^Igralec_ka \d+$""")
+    fun isPlaceholderName(name: String) = PLACEHOLDER.matches(name)
+
+    // Slovene plurals: the 1 / 2 / 3–4 / 5+ forms
+
+    fun rundaCountText(count: Int): String = when (count) {
+        1 -> "1 runda"
+        2 -> "2 rundi"
+        3, 4 -> "$count runde"
+        else -> "$count rund"
+    }
+
+    fun sejaCountText(count: Int): String = when (count) {
+        1 -> "1 seja"
+        2 -> "2 seji"
+        3, 4 -> "$count seje"
+        else -> "$count sej"
+    }
+
+    fun uspesnihText(count: Int): String = when (count) {
+        1 -> "1 uspešna"
+        2 -> "2 uspešni"
+        3, 4 -> "$count uspešne"
+        else -> "$count uspešnih"
+    }
+
+    fun slepCountText(count: Int): String = when (count) {
+        1 -> "1 šlep"
+        2 -> "2 šlepa"
+        3, 4 -> "$count šlepi"
+        else -> "$count šlepov"
     }
 }

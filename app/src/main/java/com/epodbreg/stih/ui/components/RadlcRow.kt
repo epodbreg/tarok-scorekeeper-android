@@ -39,10 +39,11 @@ fun RadlcRow(
                         modifier = Modifier
                             .size(18.dp)
                             .clip(CircleShape)
-                            .background(if (used) StihBlue.copy(alpha = 0.85f) else Color.Transparent)
+                            // Full-strength fill and a mid gray outline: readable at a glance in both themes
+                            .background(if (used) StihBlue else Color.Transparent)
                             .border(
                                 width = 1.5.dp,
-                                color = if (used) StihBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                color = if (used) StihBlue else Color(0xFF8E8E93),
                                 shape = CircleShape,
                             )
                             .let { m ->

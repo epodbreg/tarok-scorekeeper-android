@@ -56,7 +56,7 @@ fun GameSession.csvExport(): String {
     val dateFormatter = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     lines.add("Seja,${dateFormatter.format(Date(startTime))}")
     lines.add("Igralci,${players.joinToString(", ") { it.name }}")
-    lines.add("Število iger,${sorted.size}")
+    lines.add("Število rund,${sorted.count { !it.contract.isSideEntry }}")
     lines.add("")
 
     val playerNames = players.joinToString(",") { q(it.name) }

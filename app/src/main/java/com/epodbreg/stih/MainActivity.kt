@@ -116,6 +116,7 @@ private fun StihApp() {
 
         Screen.PlayerSetup -> PlayerSetupScreen(
             prefills = setupPrefills,
+            knownPlayers = sessionManager.frequentPlayerNames,
             onStart = { players ->
                 sessionManager.clearActiveSession()
                 startGame(players)
@@ -161,6 +162,7 @@ private fun StihApp() {
 
         Screen.History -> SessionHistoryScreen(
             sessionManager = sessionManager,
+            settings = settings,
             onBack = { screen = Screen.Home },
             onResumeSession = { session ->
                 sessionManager.setActiveSessionDirect(session.copy(endTime = null))

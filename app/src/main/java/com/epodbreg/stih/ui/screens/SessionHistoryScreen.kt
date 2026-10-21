@@ -1,6 +1,10 @@
 package com.epodbreg.stih.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.People
+import com.epodbreg.stih.data.SettingsManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,12 +74,32 @@ import java.util.Locale
 @Composable
 fun SessionHistoryScreen(
     sessionManager: SessionManager,
+    settings: SettingsManager,
     onBack: () -> Unit,
     onResumeSession: (GameSession) -> Unit,
     onNewWithPlayers: (List<Player>) -> Unit,
 ) {
     var selectedSession by remember { mutableStateOf<GameSession?>(null) }
     var sessionToDelete by remember { mutableStateOf<GameSession?>(null) }
+    var showStats by remember { mutableStateOf(false) }
+    var showPlayers by remember { mutableStateOf(false) }
+
+    // Player management sits on top of stats when opened from its picker
+    if (showPlayers) {
+        BackHandler { showPlayers = false }
+        PlayerManagementScreen(sessionManager, settings, onBack = { showPlayers = false })
+        return
+    }
+    if (showStats) {
+        BackHandler { showStats = false }
+        StatsScreen(
+            sessionManager = sessionManager,
+            settings = settings,
+            onBack = { showStats = false },
+            onManagePlayers = { showPlayers = true },
+        )
+        return
+    }
 
     val detail = selectedSession
     if (detail != null) {
@@ -95,6 +119,15 @@ fun SessionHistoryScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Nazaj")
+                    }
+                },
+                actions = {
+                    val hasSessions = sessionManager.savedSessions.isNotEmpty()
+                    IconButton(onClick = { showPlayers = true }, enabled = hasSessions) {
+                        Icon(Icons.Filled.People, contentDescription = "Igralci")
+                    }
+                    IconButton(onClick = { showStats = true }, enabled = hasSessions) {
+                        Icon(Icons.Filled.BarChart, contentDescription = "Tarok statistika")
                     }
                 },
             )
@@ -136,7 +169,7 @@ fun SessionHistoryScreen(
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    TarokStrings.gameCountText(session.games.size),
+                                    TarokStrings.rundaCountText(session.roundCount),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -237,13 +270,13 @@ fun SessionDetailScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (session.games.isNotEmpty()) {
+                    if (session.roundCount > 0) {
                         Icon(
                             Icons.Filled.SportsEsports, contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp),
                         )
                         Text(
-                            TarokStrings.gameCountText(session.games.size),
+                            TarokStrings.rundaCountText(session.roundCount),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

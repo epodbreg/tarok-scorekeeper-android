@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -162,6 +163,18 @@ fun GameStepperSheet(
         }
     }
     var gameKontra by remember { mutableStateOf(initialGame?.pointsBreakdown?.kontraLevel ?: 0) }
+    var kontraCaller by remember { mutableStateOf(initialGame?.kontraCallerName) }
+
+    /** Opponents of the declarer side — the only players who can call kontra. */
+    fun kontraCandidates(): List<String> {
+        val declarer = selectedPlayer?.let { players[it].name }
+        val partner = selectedPartner?.let { players[it].name }
+        return players.map { it.name }.filter { it != declarer && it != partner }
+    }
+
+    /** The caller only counts while kontra is active and they're still an opponent (partner may change). */
+    fun resolvedKontraCaller(): String? =
+        kontraCaller?.takeIf { gameKontra > 0 && it in kontraCandidates() }
     val expandedBonuses = remember { mutableStateMapOf<BonusType, Boolean>() }
     var selectedUnderlyingGame by remember { mutableStateOf(initialGame?.underlyingGame) }
     var isValatAnnounced by remember { mutableStateOf(initialGame?.isValatAnnounced ?: false) }
@@ -265,6 +278,7 @@ fun GameStepperSheet(
                 bonuses = selectedBonuses,
                 totalPoints = totalPoints,
                 rawTotalPoints = totalPoints,
+                kontraCallerName = resolvedKontraCaller(),
             )
         )
     }
@@ -290,6 +304,7 @@ fun GameStepperSheet(
                 pointsBreakdown = PointsBreakdown(gamePoints = totalPoints, kontraLevel = gameKontra),
                 bonuses = emptyList(),
                 totalPoints = totalPoints,
+                kontraCallerName = resolvedKontraCaller(),
             )
         )
     }
@@ -320,6 +335,7 @@ fun GameStepperSheet(
                 totalPoints = totalPoints,
                 underlyingGame = if (settings.currentRuleSet.generalRules.valatWithGamePoints) selectedUnderlyingGame else null,
                 isValatAnnounced = isValatAnnounced,
+                kontraCallerName = resolvedKontraCaller(),
             )
         )
     }
@@ -451,6 +467,9 @@ fun GameStepperSheet(
                     onPoints = { points = it },
                     gameKontra = gameKontra,
                     onGameKontra = { gameKontra = (gameKontra + 1) % 5 },
+                    kontraCandidates = kontraCandidates(),
+                    kontraCaller = kontraCaller,
+                    onKontraCaller = { name -> kontraCaller = if (kontraCaller == name) null else name },
                     bonusStates = bonusStates,
                     bonusKontras = bonusKontras,
                     expandedBonuses = expandedBonuses,
@@ -871,6 +890,9 @@ private fun OutcomeStep(
     onPoints: (String) -> Unit,
     gameKontra: Int,
     onGameKontra: () -> Unit,
+    kontraCandidates: List<String>,
+    kontraCaller: String?,
+    onKontraCaller: (String) -> Unit,
     bonusStates: MutableMap<BonusType, BonusCycleState>,
     bonusKontras: MutableMap<BonusType, Int>,
     expandedBonuses: MutableMap<BonusType, Boolean>,
@@ -946,6 +968,38 @@ private fun OutcomeStep(
                         fontSize = 13.sp,
                         maxLines = 1,
                     )
+                }
+            }
+        }
+
+        // "Kontro dal_a:" — optional, records who called the game kontra (for stats)
+        if (gameKontra > 0) {
+            val color = KontraStyle.forLevel(gameKontra)?.color ?: StihOrange
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "Kontro dal_a:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                ) {
+                    kontraCandidates.forEach { name ->
+                        val selected = kontraCaller == name
+                        Text(
+                            name,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (selected) color else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { onKontraCaller(name) }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
                 }
             }
         }

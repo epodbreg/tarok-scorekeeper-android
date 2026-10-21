@@ -130,6 +130,20 @@ fun GameHistoryCard(
                         Text(partner, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
                     }
                 }
+                // Who called the kontra (if recorded), in the kontra level's colour
+                val kontraStyle = KontraStyle.forLevel(game.pointsBreakdown.kontraLevel)
+                if (game.kontraCallerName != null && kontraStyle != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Kontro dal_a:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            game.kontraCallerName,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            // Mort is near-black: use the text colour so it stays readable in dark mode
+                            color = if (game.pointsBreakdown.kontraLevel >= 4) MaterialTheme.colorScheme.onSurface else kontraStyle.color,
+                        )
+                    }
+                }
                 if (game.bonuses.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         game.bonuses.forEach { bonus -> BonusBadge(bonus) }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.TarokStrings
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -95,6 +96,53 @@ class SessionManager(context: Context) {
     fun clearActiveSession() {
         activeSession = null
         activeSessionFile.delete()
+    }
+
+    // ---- Player rename / merge ----------------------------------------------
+
+    data class NameCount(val name: String, val sessionCount: Int)
+
+    sealed interface RenameOutcome {
+        data class Renamed(val sessionCount: Int) : RenameOutcome
+        /** Both names appear in the same session(s) — refusing to fuse two real people */
+        data class Conflict(val sessionDates: List<Long>) : RenameOutcome
+    }
+
+    /** Every distinct player name across saved sessions, with how many sessions it appears in. */
+    val allPlayerNames: List<NameCount>
+        get() = savedSessions
+            .flatMap { it.playerNames.toSet() }
+            .groupingBy { it }.eachCount()
+            .map { NameCount(it.key, it.value) }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+    /** Saved names, most sessions first (then by name), placeholders left out — for quick-pick. */
+    val frequentPlayerNames: List<String>
+        get() = allPlayerNames
+            .filterNot { TarokStrings.isPlaceholderName(it.name) }
+            .sortedWith(compareByDescending<NameCount> { it.sessionCount }.thenBy { it.name })
+            .map { it.name }
+
+    /**
+     * Rename [oldName] to [newName] in all saved sessions and the active one.
+     * If [newName] already exists this merges the two — unless they ever played together.
+     */
+    fun renamePlayer(oldName: String, newName: String): RenameOutcome {
+        val target = newName.trim()
+        if (target.isEmpty() || target == oldName) return RenameOutcome.Renamed(0)
+
+        val conflicts = (savedSessions + listOfNotNull(activeSession))
+            .filter { it.hasConflict(oldName, target) }
+        if (conflicts.isNotEmpty()) return RenameOutcome.Conflict(conflicts.map { it.startTime })
+
+        val affected = savedSessions.count { oldName in it.playerNames }
+        savedSessions = savedSessions.map { it.renamingPlayer(oldName, target) }
+        persistSessions()
+        activeSession?.takeIf { oldName in it.playerNames }?.let {
+            activeSession = it.renamingPlayer(oldName, target)
+            persistActiveSession()
+        }
+        return RenameOutcome.Renamed(affected)
     }
 
     private fun persistSessions() {

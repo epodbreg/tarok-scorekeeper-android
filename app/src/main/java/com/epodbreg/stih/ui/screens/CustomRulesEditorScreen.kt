@@ -213,6 +213,23 @@ private fun BasicSection(
             }
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Radlc podvoji pagat ultimo", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                    Text(
+                        "Ko je izklopljeno, radlci ne podvojijo pagat ultimo nagrade",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = rules.generalRules.radlcDoublesPagat,
+                    onCheckedChange = {
+                        onRules(rules.copy(generalRules = rules.generalRules.copy(radlcDoublesPagat = it)))
+                    },
+                )
+            }
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Kazen za neuporabljene radlce",
                     style = MaterialTheme.typography.bodyMedium,
@@ -235,6 +252,23 @@ private fun BasicSection(
                     },
                 )
             }
+        }
+    }
+
+    // Renons penalty
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Kazen za renons", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            NumberFieldRow(
+                label = "Kazen:",
+                value = rules.generalRules.renonsPenalty,
+                onValue = { onRules(rules.copy(generalRules = rules.generalRules.copy(renonsPenalty = it))) },
+            )
+            Text(
+                "Odšteje se igralcu_ki, ki naredi renons (vedno kazen)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 

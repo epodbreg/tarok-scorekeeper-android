@@ -36,6 +36,10 @@ data class GeneralRulesConfig(
      * prazen klop consumes it). Klop always *grants* radlci regardless.
      */
     val radlcDoublesKlop: Boolean = true,
+    /** Whether an unused radlc doubles the pagat quick-award. */
+    val radlcDoublesPagat: Boolean = true,
+    /** Points deducted for a renons (always a penalty). */
+    val renonsPenalty: Int = 20,
     val enableAutoScoring: Boolean = true,
     val valatWithGamePoints: Boolean = false,
 )

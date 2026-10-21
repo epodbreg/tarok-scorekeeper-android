@@ -251,14 +251,14 @@ fun MainGameScreen(
                                 .clickable { isHistoryExpanded = !isHistoryExpanded },
                         ) {
                             Text("Zgodovina iger", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            if (viewModel.gameHistory.isNotEmpty()) {
+                            if (viewModel.roundCount > 0) {
                                 Spacer(Modifier.width(8.dp))
                                 Surface(
                                     shape = CircleShape,
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                                 ) {
                                     Text(
-                                        "${viewModel.gameHistory.size}",
+                                        "${viewModel.roundCount}",
                                         color = MaterialTheme.colorScheme.primary,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold,
@@ -424,8 +424,12 @@ fun MainGameScreen(
     penaltyPlayerId?.let { playerId ->
         val player = viewModel.players.firstOrNull { it.id == playerId }
         if (player != null) {
+            val rules = viewModel.settings.currentRuleSet
             PenaltyDialog(
                 player = player,
+                pagatPoints = kotlin.math.abs(rules.bonusScores.pagatUltimoBase),
+                mondPenalty = kotlin.math.abs(rules.bonusScores.mondKazBase),
+                renonsPenalty = kotlin.math.abs(rules.generalRules.renonsPenalty),
                 onAction = { contract, points, outcome ->
                     val entry = GameEntry(
                         contract = contract,
@@ -563,6 +567,9 @@ private fun DealerMenuSheet(
 @Composable
 private fun PenaltyDialog(
     player: Player,
+    pagatPoints: Int,
+    mondPenalty: Int,
+    renonsPenalty: Int,
     onAction: (TarokContract, Int, HandOutcome) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -572,17 +579,17 @@ private fun PenaltyDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(player.name, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                PenaltyOption("Pagat ultimo +25", StihGreen) {
-                    onAction(TarokContract.PAGAT_BONUS, 25, HandOutcome.ZMAGAL)
+                PenaltyOption("Pagat ultimo +$pagatPoints", StihGreen) {
+                    onAction(TarokContract.PAGAT_BONUS, pagatPoints, HandOutcome.ZMAGAL)
                 }
-                PenaltyOption("Izgubljen pagat −25", StihRed) {
-                    onAction(TarokContract.PAGAT_BONUS, -25, HandOutcome.IZGUBIL)
+                PenaltyOption("Izgubljen pagat −$pagatPoints", StihRed) {
+                    onAction(TarokContract.PAGAT_BONUS, -pagatPoints, HandOutcome.IZGUBIL)
                 }
-                PenaltyOption("Mond −20", StihRed) {
-                    onAction(TarokContract.PENALTY_MOND, -20, HandOutcome.IZGUBIL)
+                PenaltyOption("Mond −$mondPenalty", StihRed) {
+                    onAction(TarokContract.PENALTY_MOND, -mondPenalty, HandOutcome.IZGUBIL)
                 }
-                PenaltyOption("Renons −20", StihRed) {
-                    onAction(TarokContract.PENALTY_RENONS, -20, HandOutcome.IZGUBIL)
+                PenaltyOption("Renons −$renonsPenalty", StihRed) {
+                    onAction(TarokContract.PENALTY_RENONS, -renonsPenalty, HandOutcome.IZGUBIL)
                 }
             }
         },

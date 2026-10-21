@@ -38,9 +38,13 @@ class GameViewModel(
 
     private var originalPlayerOrder: List<Player> = initialPlayers
 
-    /** Games that rotate the deal — everything except quick penalties/awards. */
+    /** Played rounds — side entries (penalties/awards) excluded. */
+    val roundCount: Int
+        get() = gameHistory.count { !it.contract.isSideEntry }
+
+    /** Only real rounds rotate the deal. */
     private val dealerAdvancingCount: Int
-        get() = gameHistory.count { it.contract !in NON_ADVANCING_CONTRACTS }
+        get() = roundCount
 
     val currentDealerIndex: Int
         get() {
@@ -60,7 +64,7 @@ class GameViewModel(
         // Migration: old sessions stored only the dealer index — back-solve the
         // offset so the dealer doesn't jump.
         val n = existing.players.size
-        val advancing = existing.games.count { it.contract !in NON_ADVANCING_CONTRACTS }
+        val advancing = existing.roundCount
         dealerManualOffset = existing.dealerManualOffset
             ?: Math.floorMod(existing.currentDealerIndex - advancing, n)
         recalculate(save = false)
@@ -119,15 +123,15 @@ class GameViewModel(
         updatedPlayers: List<Player>,
         checkObvezniKlop: Boolean = true,
     ) {
-        val prevLiveNets = if (checkObvezniKlop) {
-            players.associate { it.name to liveNetScore(it) }
-        } else null
+        // RAW scores before this game: the trigger follows the big displayed
+        // number, not the radlc-adjusted one
+        val previousScores = if (checkObvezniKlop) captureScores() else null
 
         gameHistory = gameHistory + entry
         players = applyGameScore(entry, updatedPlayers, add = true)
         saveCurrentState() // dealer is derived from history — no explicit advance
 
-        prevLiveNets?.let { checkObvezniKlop(it, entry) }
+        previousScores?.let { checkObvezniKlop(it, entry) }
     }
 
     /** Restore a previously deleted game entry (undo). Radlci must be restored by the caller first. */
@@ -145,35 +149,32 @@ class GameViewModel(
         gameHistory = games
     }
 
-    /** Live net score = raw score minus penalty for unused radlci. */
+    /** Display-only: raw score minus the end-of-session penalty for unused radlci. */
     fun liveNetScore(player: Player): Int {
         val rules = settings.currentRuleSet.generalRules
         if (!rules.radlcPenaltyEnabled) return player.score
         return player.score - player.unusedRadlciCount * rules.radlcPenaltyPerUnused
     }
 
-    private fun checkObvezniKlop(previousLiveNetScores: Map<String, Int>, game: GameEntry) {
+    private fun checkObvezniKlop(previousScores: Map<String, Int>, game: GameEntry) {
         if (!settings.obvezniKlopEnabled) return
 
         var triggerPlayer: Player? = null
 
-        // Trigger 1: any player's live net score changed to a non-negative
+        // Trigger 1: any player's RAW score changed to a non-negative
         // multiple of the configured step (zero counts)
         val step = settings.obvezniKlopStep
         if (settings.obvezniKlopOnRoundScore && step > 0) {
             triggerPlayer = players.firstOrNull { player ->
-                val prev = previousLiveNetScores[player.name] ?: player.score
-                val curr = liveNetScore(player)
+                val prev = previousScores[player.name] ?: player.score
+                val curr = player.score
                 curr != prev && curr >= 0 && curr % step == 0
             }
         }
 
-        // Trigger 2: the game itself totalled exactly 0 (exclude klop and penalty games)
+        // Trigger 2: the game itself totalled exactly 0 (klop and side entries excluded)
         if (triggerPlayer == null && settings.obvezniKlopOnZeroOutcome) {
-            val isRealGame = game.contract !in setOf(
-                TarokContract.KLOP, TarokContract.PENALTY_MOND,
-                TarokContract.PENALTY_RENONS, TarokContract.PAGAT_BONUS,
-            )
+            val isRealGame = game.contract != TarokContract.KLOP && !game.contract.isSideEntry
             if (isRealGame && game.totalPoints == 0) {
                 triggerPlayer = players.firstOrNull { it.name == game.declarerName }
             }
@@ -292,13 +293,4 @@ class GameViewModel(
         get() = GameSession.computeSlepaci(gameHistory)
 
     fun captureScores(): Map<String, Int> = players.associate { it.name to it.score }
-
-    companion object {
-        /** Quick penalties/awards outside the normal game flow don't rotate the deal. */
-        val NON_ADVANCING_CONTRACTS: Set<TarokContract> = setOf(
-            TarokContract.PENALTY_MOND,
-            TarokContract.PENALTY_RENONS,
-            TarokContract.PAGAT_BONUS,
-        )
-    }
 }

@@ -275,6 +275,19 @@ fun SettingsScreen(
                     )
                     HorizontalDivider()
                     SettingsToggleRow(
+                        title = "Radlc podvoji pagat ultimo",
+                        subtitle = "Ko je izklopljeno, radlci ne podvojijo pagat ultimo nagrade",
+                        checked = settings.currentRuleSet.generalRules.radlcDoublesPagat,
+                        onCheckedChange = {
+                            settings.updateCurrentRuleSet(
+                                settings.currentRuleSet.copy(
+                                    generalRules = settings.currentRuleSet.generalRules.copy(radlcDoublesPagat = it)
+                                )
+                            )
+                        },
+                    )
+                    HorizontalDivider()
+                    SettingsToggleRow(
                         title = "Radlc podvoji klop",
                         subtitle = "Neuporabljen radlc podvoji klop rezultat (prazen klop ga porabi)",
                         checked = settings.currentRuleSet.generalRules.radlcDoublesKlop,
