@@ -44,6 +44,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.epodbreg.stih.model.Player
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.groupNames
+import com.epodbreg.stih.model.isPossiblyDifferentPerson
+import com.epodbreg.stih.model.normalizedGroup
+import com.epodbreg.stih.ui.theme.StihOrange
 
 private const val MAX_QUICK_PICKS = 12
 
@@ -52,11 +69,16 @@ private const val MAX_QUICK_PICKS = 12
 @Composable
 fun PlayerSetupScreen(
     prefills: List<String> = emptyList(),
+    /** Group the new session goes into ("Torek"); null = none */
+    initialGroup: String? = null,
     /** Names from saved sessions, most frequent first */
     knownPlayers: List<String> = emptyList(),
-    onStart: (List<Player>) -> Unit,
+    /** For group names and the "different person with the same name?" warning */
+    savedSessions: List<GameSession> = emptyList(),
+    onStart: (players: List<Player>, group: String?) -> Unit,
     onCancel: () -> Unit,
 ) {
+    var group by remember { mutableStateOf(initialGroup) }
     var playerCount by remember { mutableStateOf(maxOf(3, prefills.size)) }
     val playerNames = remember {
         (prefills + List(5) { "" }).take(5).toMutableStateList()
@@ -136,6 +158,12 @@ fun PlayerSetupScreen(
                 }
             }
 
+            GroupPickerRow(
+                group = group,
+                groups = savedSessions.groupNames,
+                onGroup = { group = it },
+            )
+
             if (knownPlayers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -186,6 +214,24 @@ fun PlayerSetupScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    // "Is this the same Jure?" — a saved name seated somewhere it has no history
+                    val name = playerNames[idx].trim()
+                    val others = (0 until playerCount).filter { it != idx }.map { playerNames[it].trim() }
+                    if (name.isNotEmpty() && savedSessions.isPossiblyDifferentPerson(name, others, group)) {
+                        val context = group?.let { "še ni igral_a v skupini $it" } ?: "še ni igral_a z nikomer od teh"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp),
+                        ) {
+                            Icon(Icons.Filled.PersonSearch, contentDescription = null, tint = StihOrange, modifier = Modifier.size(16.dp))
+                            Text(
+                                "$name $context. Druga oseba? Dodaj začetnico, npr. »$name K.«",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = StihOrange,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -198,7 +244,7 @@ fun PlayerSetupScreen(
                         val players = (0 until playerCount).map { idx ->
                             Player(name = playerNames[idx].trim().ifEmpty { "Igralec_ka ${idx + 1}" })
                         }
-                        onStart(players)
+                        onStart(players, group)
                     }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center,
@@ -206,5 +252,79 @@ fun PlayerSetupScreen(
                 Text("Začni igro", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+/** "Skupina" picker: Brez skupine / existing groups / Nova skupina… */
+@Composable
+private fun GroupPickerRow(group: String?, groups: List<String>, onGroup: (String?) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var newGroupDialog by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf("") }
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Outlined.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        Text(
+            "Skupina",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp).weight(1f),
+        )
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { menuOpen = true }) {
+                Text(group ?: "Brez skupine", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("Brez skupine") },
+                    trailingIcon = { if (group == null) Icon(Icons.Filled.Check, contentDescription = null) },
+                    onClick = { onGroup(null); menuOpen = false },
+                )
+                groups.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        trailingIcon = { if (group == name) Icon(Icons.Filled.Check, contentDescription = null) },
+                        onClick = { onGroup(name); menuOpen = false },
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Nova skupina…") },
+                    leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        newGroupName = ""
+                        newGroupDialog = true
+                    },
+                )
+            }
+        }
+    }
+
+    if (newGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { newGroupDialog = false },
+            title = { Text("Nova skupina") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Seje v isti skupini lahko v statistiki gledaš ločeno.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = newGroupName,
+                        onValueChange = { newGroupName = it },
+                        placeholder = { Text("npr. Torek") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    normalizedGroup(newGroupName)?.let(onGroup)
+                    newGroupDialog = false
+                }) { Text("Dodaj") }
+            },
+            dismissButton = { TextButton(onClick = { newGroupDialog = false }) { Text("Prekliči") } },
+        )
     }
 }

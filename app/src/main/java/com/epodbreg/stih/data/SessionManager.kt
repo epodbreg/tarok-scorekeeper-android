@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.epodbreg.stih.model.GameSession
 import com.epodbreg.stih.model.TarokStrings
+import com.epodbreg.stih.model.groupNames
+import com.epodbreg.stih.model.normalizedGroup
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -13,6 +15,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Session persistence. Port of SessionManager.swift — JSON files in filesDir.
@@ -76,7 +79,7 @@ class SessionManager(context: Context) {
     }
 
     fun startNewSession(session: GameSession) {
-        activeSession = session
+        activeSession = session.copy(groupName = normalizedGroup(session.groupName))
         persistActiveSession()
     }
 
@@ -146,22 +149,47 @@ class SessionManager(context: Context) {
      * Rename [oldName] to [newName] in all saved sessions and the active one.
      * If [newName] already exists this merges the two — unless they ever played together.
      */
-    fun renamePlayer(oldName: String, newName: String): RenameOutcome {
+    /**
+     * [sessionIds] limits the rename to these saved sessions — a *split*, for when two
+     * different people were saved under one name. null = everywhere, including the active session.
+     */
+    fun renamePlayer(oldName: String, newName: String, sessionIds: Set<UUID>? = null): RenameOutcome {
         val target = newName.trim()
         if (target.isEmpty() || target == oldName) return RenameOutcome.Renamed(0)
 
-        val conflicts = (savedSessions + listOfNotNull(activeSession))
+        fun inScope(session: GameSession) = sessionIds?.contains(session.id) ?: true
+        val activeInScope = if (sessionIds == null) listOfNotNull(activeSession) else emptyList()
+        val conflicts = (savedSessions.filter(::inScope) + activeInScope)
             .filter { it.hasConflict(oldName, target) }
         if (conflicts.isNotEmpty()) return RenameOutcome.Conflict(conflicts.map { it.startTime })
 
-        val affected = savedSessions.count { oldName in it.playerNames }
-        savedSessions = savedSessions.map { it.renamingPlayer(oldName, target) }
+        val affected = savedSessions.count { inScope(it) && oldName in it.playerNames }
+        savedSessions = savedSessions.map { if (inScope(it)) it.renamingPlayer(oldName, target) else it }
         persistSessions()
-        activeSession?.takeIf { oldName in it.playerNames }?.let {
-            activeSession = it.renamingPlayer(oldName, target)
-            persistActiveSession()
+        if (sessionIds == null) {
+            activeSession?.takeIf { oldName in it.playerNames }?.let {
+                activeSession = it.renamingPlayer(oldName, target)
+                persistActiveSession()
+            }
         }
         return RenameOutcome.Renamed(affected)
+    }
+
+    // ---- Session groups -------------------------------------------------------
+
+    /** Group names in use across saved sessions, most sessions first */
+    val allGroupNames: List<String> get() = savedSessions.groupNames
+
+    /** Put sessions into a group (null or blank = remove them from any group). */
+    fun setGroup(group: String?, sessionIds: Set<UUID>) {
+        val normalized = normalizedGroup(group)
+        savedSessions = savedSessions.map { if (it.id in sessionIds) it.copy(groupName = normalized) else it }
+        persistSessions()
+    }
+
+    /** Removes the group from every session (the sessions themselves stay). */
+    fun deleteGroup(name: String) {
+        setGroup(null, savedSessions.filter { it.groupName == name }.map { it.id }.toSet())
     }
 
     // All writes and deletes run synchronously on the caller's thread, so they always land

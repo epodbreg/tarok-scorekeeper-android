@@ -60,14 +60,16 @@ private fun StihApp() {
 
     var screen: Screen by remember { mutableStateOf(Screen.Home) }
     var setupPrefills by remember { mutableStateOf(listOf<String>()) }
+    /** Group the next new session goes into ("Torek"); null = none */
+    var setupGroup by remember { mutableStateOf<String?>(null) }
     var gameViewModel by remember { mutableStateOf<GameViewModel?>(null) }
     var showResumePrompt by remember {
         mutableStateOf(sessionManager.activeSession?.games?.isNotEmpty() == true)
     }
 
-    fun startGame(players: List<Player>) {
+    fun startGame(players: List<Player>, group: String?) {
         if (sessionManager.activeSession == null) {
-            sessionManager.startNewSession(GameSession(players = players))
+            sessionManager.startNewSession(GameSession(players = players, groupName = group))
         }
         gameViewModel = GameViewModel(sessionManager, settings, players)
         screen = Screen.Game
@@ -85,6 +87,7 @@ private fun StihApp() {
                 activeSession = sessionManager.activeSession,
                 onStartNew = {
                     setupPrefills = emptyList()
+                    setupGroup = null
                     screen = Screen.PlayerSetup
                 },
                 onResume = { resumeActiveSession() },
@@ -103,6 +106,7 @@ private fun StihApp() {
                         showResumePrompt = false
                         sessionManager.clearActiveSession()
                         setupPrefills = emptyList()
+                        setupGroup = null
                         screen = Screen.PlayerSetup
                     },
                     onDiscard = {
@@ -116,10 +120,12 @@ private fun StihApp() {
 
         Screen.PlayerSetup -> PlayerSetupScreen(
             prefills = setupPrefills,
+            initialGroup = setupGroup,
             knownPlayers = sessionManager.frequentPlayerNames,
-            onStart = { players ->
+            savedSessions = sessionManager.savedSessions,
+            onStart = { players, group ->
                 sessionManager.clearActiveSession()
-                startGame(players)
+                startGame(players, group)
             },
             onCancel = { screen = Screen.Home },
         )
@@ -151,6 +157,7 @@ private fun StihApp() {
                 sessionManager.saveSession(s.session)
                 gameViewModel = null
                 setupPrefills = s.session.playerNames
+                setupGroup = s.session.groupName
                 screen = Screen.PlayerSetup
             },
             onDiscard = {
@@ -168,8 +175,9 @@ private fun StihApp() {
                 sessionManager.setActiveSessionDirect(session.copy(endTime = null))
                 resumeActiveSession()
             },
-            onNewWithPlayers = { players ->
+            onNewWithPlayers = { players, group ->
                 setupPrefills = players.map { it.name }
+                setupGroup = group
                 screen = Screen.PlayerSetup
             },
         )

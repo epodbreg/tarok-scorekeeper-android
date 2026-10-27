@@ -408,6 +408,7 @@ object TarokStats {
         return when {
             minutes < 1 -> "< 1 min"
             minutes < 60 -> "$minutes min"
+            minutes % 60 == 0 -> "${minutes / 60} h"
             else -> "${minutes / 60} h ${minutes % 60} min"
         }
     }

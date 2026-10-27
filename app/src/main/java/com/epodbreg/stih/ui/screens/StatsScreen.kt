@@ -61,6 +61,12 @@ import com.epodbreg.stih.data.SettingsManager
 import com.epodbreg.stih.logic.PlayerStats
 import com.epodbreg.stih.logic.TarokStats
 import com.epodbreg.stih.model.BonusType
+import androidx.compose.material.icons.outlined.Folder
+import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.SessionFilter
+import com.epodbreg.stih.model.filtered
+import com.epodbreg.stih.model.groupNames
+import com.epodbreg.stih.ui.components.GroupBadge
 import com.epodbreg.stih.model.TarokStrings
 import com.epodbreg.stih.ui.components.StatChip
 import com.epodbreg.stih.ui.components.StatChipGrid
@@ -169,6 +175,10 @@ fun StatsScreen(
                 }
             }
 
+            if (sessions.groupNames.isNotEmpty()) {
+                SessionFilterRow(sessions = sessions, selectedIds = selectedIds, onSelect = { selectedIds = it })
+            }
+
             if (stats == null) {
                 EmptyStats()
             } else {
@@ -189,6 +199,53 @@ fun StatsScreen(
             onChange = { selectedIds = it },
             onDismiss = { showFilter = false },
         )
+    }
+}
+
+/** "Seje: Vse seje / Torek / Brez skupine" — sets the session selection; the label is derived from it. */
+@Composable
+private fun SessionFilterRow(sessions: List<GameSession>, selectedIds: Set<UUID>, onSelect: (Set<UUID>) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    fun ids(filter: SessionFilter) = sessions.filtered(filter).map { it.id }.toSet()
+    val groups = sessions.groupNames
+    val label = when (selectedIds) {
+        ids(SessionFilter.All) -> "Vse seje"
+        else -> groups.firstOrNull { selectedIds == ids(SessionFilter.Group(it)) }
+            ?: if (selectedIds == ids(SessionFilter.Ungrouped)) "Brez skupine" else "Po meri (${selectedIds.size})"
+    }
+    val options = buildList {
+        add("Vse seje" to SessionFilter.All)
+        groups.forEach { add(it to SessionFilter.Group(it)) }
+        if (ids(SessionFilter.Ungrouped).isNotEmpty()) add("Brez skupine" to SessionFilter.Ungrouped)
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        Text(
+            "Seje",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp).weight(1f),
+        )
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { menuOpen = true }) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                options.forEach { (title, filter) ->
+                    val filterIds = ids(filter)
+                    DropdownMenuItem(
+                        text = { Text("$title (${filterIds.size})") },
+                        trailingIcon = { if (selectedIds == filterIds) Icon(Icons.Filled.Check, contentDescription = null) },
+                        onClick = {
+                            onSelect(filterIds)
+                            menuOpen = false
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -335,8 +392,9 @@ private fun SessionFilterSheet(
                         .clickable { onChange(if (checked) selectedIds - session.id else selectedIds + session.id) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(SessionManager.getSessionName(session), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        session.groupName?.let { GroupBadge(it) }
                         Text(
                             "${SessionManager.formatDate(session.startTime)} · ${TarokStrings.rundaCountText(session.roundCount)}",
                             style = MaterialTheme.typography.bodySmall,

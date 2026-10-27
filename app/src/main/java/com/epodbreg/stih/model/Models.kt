@@ -271,6 +271,8 @@ data class GameSession(
      * Null on sessions saved before this field existed — back-solved on load.
      */
     val dealerManualOffset: Int? = null,
+    /** Optional group ("Torek") for filtering stats; null = no group */
+    val groupName: String? = null,
 ) {
     val playerNames: List<String> get() = players.map { it.name }
     val isActive: Boolean get() = endTime == null

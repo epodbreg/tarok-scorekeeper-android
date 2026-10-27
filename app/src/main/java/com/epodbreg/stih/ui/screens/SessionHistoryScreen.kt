@@ -2,6 +2,19 @@ package com.epodbreg.stih.ui.screens
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.width
+import com.epodbreg.stih.ui.components.GroupAssignSheet
+import com.epodbreg.stih.ui.components.GroupBadge
+import java.util.UUID
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.People
 import com.epodbreg.stih.data.SettingsManager
@@ -70,19 +83,24 @@ import java.util.Date
 import java.util.Locale
 
 /** Saved sessions list. Port of SessionHistoryView.swift. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SessionHistoryScreen(
     sessionManager: SessionManager,
     settings: SettingsManager,
     onBack: () -> Unit,
     onResumeSession: (GameSession) -> Unit,
-    onNewWithPlayers: (List<Player>) -> Unit,
+    /** New game with this table's players and group */
+    onNewWithPlayers: (players: List<Player>, group: String?) -> Unit,
 ) {
     var selectedSession by remember { mutableStateOf<GameSession?>(null) }
     var sessionToDelete by remember { mutableStateOf<GameSession?>(null) }
     var showStats by remember { mutableStateOf(false) }
     var showPlayers by remember { mutableStateOf(false) }
+    // Multi-select → put sessions into a group
+    var isSelecting by remember { mutableStateOf(false) }
+    var selection by remember { mutableStateOf(setOf<UUID>()) }
+    var groupSheetSessions by remember { mutableStateOf<Set<UUID>?>(null) }
 
     // Player management sits on top of stats when opened from its picker
     if (showPlayers) {
@@ -107,22 +125,35 @@ fun SessionHistoryScreen(
             session = detail,
             onBack = { selectedSession = null },
             onResume = { onResumeSession(detail) },
-            onNewWithPlayers = { onNewWithPlayers(detail.players) },
+            onNewWithPlayers = { onNewWithPlayers(detail.players, detail.groupName) },
         )
         return
+    }
+
+    if (isSelecting) {
+        BackHandler { isSelecting = false; selection = emptySet() }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Zgodovina sej") },
+                title = { Text(if (isSelecting) "Izberi seje" else "Zgodovina sej") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Nazaj")
+                    IconButton(onClick = {
+                        if (isSelecting) { isSelecting = false; selection = emptySet() } else onBack()
+                    }) {
+                        Icon(
+                            if (isSelecting) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = if (isSelecting) "Končano" else "Nazaj",
+                        )
                     }
                 },
                 actions = {
                     val hasSessions = sessionManager.savedSessions.isNotEmpty()
+                    if (isSelecting) return@TopAppBar
+                    IconButton(onClick = { isSelecting = true }, enabled = hasSessions) {
+                        Icon(Icons.Filled.Checklist, contentDescription = "Izberi seje")
+                    }
                     IconButton(onClick = { showPlayers = true }, enabled = hasSessions) {
                         Icon(Icons.Filled.People, contentDescription = "Igralci")
                     }
@@ -131,6 +162,24 @@ fun SessionHistoryScreen(
                     }
                 },
             )
+        },
+        bottomBar = {
+            if (isSelecting) {
+                Surface(tonalElevation = 3.dp) {
+                    TextButton(
+                        onClick = { groupSheetSessions = selection },
+                        enabled = selection.isNotEmpty(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(8.dp),
+                    ) {
+                        Icon(Icons.Filled.CreateNewFolder, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Dodaj v skupino (${selection.size})", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         },
     ) { padding ->
         if (sessionManager.savedSessions.isEmpty()) {
@@ -154,31 +203,55 @@ fun SessionHistoryScreen(
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
                 items(sessionManager.savedSessions.sortedByDescending { it.startTime }, key = { it.id }) { session ->
+                    val isSelected = session.id in selection
                     Column {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedSession = session }
+                                .combinedClickable(
+                                    onClick = {
+                                        if (isSelecting) {
+                                            selection = if (isSelected) selection - session.id else selection + session.id
+                                        } else {
+                                            selectedSession = session
+                                        }
+                                    },
+                                    // Long-press → "Skupina…" for this one session
+                                    onLongClick = { if (!isSelecting) groupSheetSessions = setOf(session.id) },
+                                )
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                            if (isSelecting) {
+                                Icon(
+                                    if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.RadioButtonUnchecked,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 Text(
                                     SessionManager.getSessionName(session),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
                                 )
-                                Text(
-                                    TarokStrings.rundaCountText(session.roundCount),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        TarokStrings.rundaCountText(session.roundCount),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    session.groupName?.let { GroupBadge(it) }
+                                }
                             }
-                            IconButton(onClick = { onResumeSession(session) }) {
-                                Icon(Icons.Filled.PlayArrow, contentDescription = "Nadaljuj", tint = StihGreen)
-                            }
-                            IconButton(onClick = { sessionToDelete = session }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Izbriši", tint = StihRed)
+                            if (!isSelecting) {
+                                IconButton(onClick = { onResumeSession(session) }) {
+                                    Icon(Icons.Filled.PlayArrow, contentDescription = "Nadaljuj", tint = StihGreen)
+                                }
+                                IconButton(onClick = { sessionToDelete = session }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Izbriši", tint = StihRed)
+                                }
                             }
                         }
                         HorizontalDivider()
@@ -186,6 +259,18 @@ fun SessionHistoryScreen(
                 }
             }
         }
+    }
+
+    groupSheetSessions?.let { ids ->
+        GroupAssignSheet(
+            sessionManager = sessionManager,
+            sessionIds = ids,
+            onDone = {
+                groupSheetSessions = null
+                isSelecting = false
+                selection = emptySet()
+            },
+        )
     }
 
     sessionToDelete?.let { session ->
