@@ -8,6 +8,7 @@ import com.epodbreg.stih.model.GameSession
 import com.epodbreg.stih.model.TarokStrings
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -23,6 +24,12 @@ class SessionManager(context: Context) {
     private val sessionsFile = File(context.filesDir, "tarok_sessions.json")
     private val activeSessionFile = File(context.filesDir, "active_session.json")
 
+    /**
+     * Set when the history file exists but could neither be read nor copied aside — then we
+     * must not overwrite it, or months of history would be replaced by an empty list.
+     */
+    private var sessionsFileIsProtected = false
+
     var activeSession: GameSession? by mutableStateOf(null)
         private set
     var savedSessions: List<GameSession> by mutableStateOf(emptyList())
@@ -34,23 +41,35 @@ class SessionManager(context: Context) {
     }
 
     private fun loadSavedSessionsSafely() {
-        savedSessions = try {
-            if (sessionsFile.exists()) json.decodeFromString(sessionsFile.readText()) else emptyList()
+        if (!sessionsFile.exists()) {
+            savedSessions = emptyList()
+            return
+        }
+        try {
+            val result = decodeSessions(sessionsFile.readText())
+            savedSessions = result.sessions
+            // Keep the original — the skipped sessions are still in it
+            if (result.failedCount > 0) backUpUnreadableFile(sessionsFile)
         } catch (_: Exception) {
-            emptyList()
+            savedSessions = emptyList()
+            if (backUpUnreadableFile(sessionsFile) == null) sessionsFileIsProtected = true
         }
     }
 
     private fun loadActiveSessionSafely() {
+        if (!activeSessionFile.exists()) {
+            activeSession = null
+            return
+        }
         activeSession = try {
-            if (activeSessionFile.exists()) {
-                val session: GameSession = json.decodeFromString(activeSessionFile.readText())
-                if (session.players.isEmpty()) {
-                    activeSessionFile.delete()
-                    null
-                } else session
-            } else null
+            val session: GameSession = json.decodeFromString(activeSessionFile.readText())
+            if (session.players.isEmpty()) {
+                activeSessionFile.delete()
+                null
+            } else session
         } catch (_: Exception) {
+            // Keep a copy first — it may hold tonight's unsaved game
+            backUpUnreadableFile(activeSessionFile)
             activeSessionFile.delete()
             null
         }
@@ -145,9 +164,13 @@ class SessionManager(context: Context) {
         return RenameOutcome.Renamed(affected)
     }
 
+    // All writes and deletes run synchronously on the caller's thread, so they always land
+    // in order (iOS 1.7 had to add a serial queue to get this).
+
     private fun persistSessions() {
+        if (sessionsFileIsProtected) return
         try {
-            sessionsFile.writeText(json.encodeToString(savedSessions))
+            writeAtomically(sessionsFile, json.encodeToString(savedSessions))
         } catch (_: Exception) {
         }
     }
@@ -156,7 +179,7 @@ class SessionManager(context: Context) {
         try {
             val session = activeSession
             if (session != null) {
-                activeSessionFile.writeText(json.encodeToString(session))
+                writeAtomically(activeSessionFile, json.encodeToString(session))
             } else {
                 activeSessionFile.delete()
             }
@@ -164,9 +187,53 @@ class SessionManager(context: Context) {
         }
     }
 
+    data class DecodeResult(val sessions: List<GameSession>, val failedCount: Int)
+
     companion object {
         @Volatile
         private var instance: SessionManager? = null
+
+        private val lenientJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+        /**
+         * Decodes saved sessions one by one, so a single broken session can't take the rest
+         * down. Throws only when the text isn't a JSON array at all.
+         */
+        fun decodeSessions(text: String): DecodeResult {
+            val elements = lenientJson.parseToJsonElement(text).jsonArray
+            val sessions = elements.mapNotNull { element ->
+                try {
+                    lenientJson.decodeFromJsonElement(GameSession.serializer(), element)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            return DecodeResult(sessions, elements.size - sessions.size)
+        }
+
+        /**
+         * Copies a file that failed to load to "<name>-unreadable-<time>.json" next to it,
+         * before any save can overwrite it. Returns the copy, or null if copying failed.
+         */
+        fun backUpUnreadableFile(file: File): File? {
+            val stamp = SimpleDateFormat("yyyy-MM-dd'T'HH-mm-ss", Locale.US).format(Date())
+            val backup = File(file.parentFile, "${file.nameWithoutExtension}-unreadable-$stamp.json")
+            return try {
+                file.copyTo(backup, overwrite = true)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /** Write to a temp file and rename, so a crash mid-write can't leave a truncated file. */
+        fun writeAtomically(file: File, text: String) {
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            tmp.writeText(text)
+            if (!tmp.renameTo(file)) {
+                file.writeText(text)
+                tmp.delete()
+            }
+        }
 
         fun get(context: Context): SessionManager =
             instance ?: synchronized(this) {

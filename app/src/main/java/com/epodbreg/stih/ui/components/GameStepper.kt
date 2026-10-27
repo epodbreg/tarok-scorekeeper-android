@@ -291,7 +291,7 @@ fun GameStepperSheet(
             selectedPartner != null -> players[selectedPartner!!].name
             else -> TarokStrings.ZARUFAL
         }
-        var totalPoints = settings.getBarvniValatScore()
+        var totalPoints = settings.getContractBaseScore(TarokContract.BARVNI_VALAT, players.size)
         if (outcome == HandOutcome.IZGUBIL) totalPoints = -totalPoints
         totalPoints *= (1 shl gameKontra)
 
@@ -1013,7 +1013,7 @@ private fun OutcomeStep(
                 underlyingGame = underlyingGame,
             )
             contract == TarokContract.BARVNI_VALAT -> ScoreSummaryBox(
-                rows = listOf("Barvni valat" to "${settings.getBarvniValatScore()} točk"),
+                rows = listOf("Barvni valat" to "${settings.getContractBaseScore(TarokContract.BARVNI_VALAT, playerCount)} točk"),
             )
             contract != null && settings.contractHasFixedScoring(contract) -> {
                 val base = settings.getContractBaseScore(contract, playerCount)

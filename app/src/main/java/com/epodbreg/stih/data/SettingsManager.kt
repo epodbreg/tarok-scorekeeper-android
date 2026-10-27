@@ -223,8 +223,6 @@ class SettingsManager(context: Context) {
     fun contractIsValatWithGamePoints(contract: TarokContract): Boolean =
         contract == TarokContract.VALAT && currentRuleSet.generalRules.valatWithGamePoints
 
-    fun getBarvniValatScore(): Int =
-        currentRuleSet.contractScores[TarokContract.BARVNI_VALAT.rawValue]?.fourPlusPlayerScore ?: 125
 
     fun getValatBaseScore(isAnnounced: Boolean): Int =
         if (isAnnounced) currentRuleSet.bonusScores.napovedanValat else currentRuleSet.bonusScores.tihiValat
