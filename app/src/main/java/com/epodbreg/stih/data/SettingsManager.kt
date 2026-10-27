@@ -194,6 +194,50 @@ class SettingsManager(context: Context) {
         if (houseScoringRules == name) setHouseRules("Standard")
     }
 
+    // ---- Backup ---------------------------------------------------------------
+
+    /** Current settings for a backup file (same keys as the iOS app). */
+    fun toBackupSettings() = BackupSettings(
+        autoScoring = autoScoring,
+        houseScoringRules = houseScoringRules,
+        showAnimations = showAnimations,
+        soundEffects = soundEffects,
+        obvezniKlopEnabled = obvezniKlopEnabled,
+        obvezniKlopOnRoundScore = obvezniKlopOnRoundScore,
+        obvezniKlopOnZeroOutcome = obvezniKlopOnZeroOutcome,
+        obvezniKlopStep = obvezniKlopStep,
+        autoRadlci = autoRadlci,
+        myPlayerName = myPlayerName.ifEmpty { null },
+        customRules = customRules,
+        currentRuleSet = currentRuleSet,
+    )
+
+    /**
+     * Restores settings from a backup. Custom rule sets merge by name (the backup's version
+     * wins; ones only on this phone stay). The house rules switch only to a rule set that
+     * exists, and the active set (with its quick toggles) only if its name matches.
+     */
+    fun applyBackup(backup: BackupSettings) {
+        backup.autoScoring?.let(::setAutoScoringEnabled)
+        backup.showAnimations?.let(::setShowAnimationsEnabled)
+        backup.soundEffects?.let(::setSoundEffectsEnabled)
+        backup.obvezniKlopEnabled?.let(::setObvezniKlop)
+        backup.obvezniKlopOnRoundScore?.let(::setObvezniKlopRoundScore)
+        backup.obvezniKlopOnZeroOutcome?.let(::setObvezniKlopZeroOutcome)
+        backup.obvezniKlopStep?.takeIf { it > 0 }?.let(::updateObvezniKlopStep)
+        backup.autoRadlci?.let(::updateAutoRadlci)
+        backup.customRules?.takeIf { it.isNotEmpty() }?.let { incoming ->
+            val names = incoming.map { it.name }.toSet()
+            customRules = customRules.filterNot { it.name in names } + incoming
+            saveCustomRules()
+        }
+        backup.houseScoringRules?.takeIf { it in getAllRuleSetNames() }?.let { house ->
+            setHouseRules(house)
+            backup.currentRuleSet?.takeIf { it.name == house }?.let(::updateCurrentRuleSet)
+        }
+        backup.myPlayerName?.takeIf { it.isNotEmpty() }?.let(::updateMyPlayerName)
+    }
+
     fun getAllRuleSetNames(): List<String> =
         predefinedRules.keys.sorted() + customRules.map { it.name }
 

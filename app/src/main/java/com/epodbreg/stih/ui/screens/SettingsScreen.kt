@@ -1,6 +1,8 @@
 package com.epodbreg.stih.ui.screens
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
+import com.epodbreg.stih.data.BackupStore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -74,9 +76,17 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var showRestore by remember { mutableStateOf(false) }
+    var clearError by remember { mutableStateOf<String?>(null) }
     var editingRules by remember { mutableStateOf<CustomScoringRules?>(null) }
     var editingOriginalName by remember { mutableStateOf<String?>(null) }
     var rulesMenuOpen by remember { mutableStateOf(false) }
+
+    if (showRestore) {
+        BackHandler { showRestore = false }
+        RestoreBackupScreen(sessionManager, settings, onClose = { showRestore = false })
+        return
+    }
 
     val currentEditing = editingRules
     if (currentEditing != null) {
@@ -99,6 +109,21 @@ fun SettingsScreen(
             },
         )
         return
+    }
+
+    /** Writes the full backup to the cache and opens the share sheet. */
+    fun shareBackup() {
+        val backup = sessionManager.makeBackup(settings.toBackupSettings())
+        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = File(exportDir, BackupStore.exportFileName())
+        file.writeText(backup.encoded(sessionManager.appVersion))
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Varnostna kopija"))
     }
 
     fun exportAllSessions() {
@@ -342,8 +367,24 @@ fun SettingsScreen(
             SettingsSection(title = "Podatki", icon = Icons.Filled.Cloud, iconColor = StihPurple) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SettingsActionRow(
-                        title = "Izvozi vse seje",
-                        subtitle = "CSV datoteka z vsemi shranjenimi sejami",
+                        title = "Varnostna kopija",
+                        subtitle = "Vse seje in nastavitve v eni datoteki — za nov telefon ali iPhone",
+                        action = "Shrani",
+                        actionColor = MaterialTheme.colorScheme.primary,
+                        onClick = { shareBackup() },
+                    )
+                    HorizontalDivider()
+                    SettingsActionRow(
+                        title = "Obnovi iz kopije",
+                        subtitle = "Doda seje iz kopije; obstoječih ne spremeni",
+                        action = "Obnovi",
+                        actionColor = MaterialTheme.colorScheme.primary,
+                        onClick = { showRestore = true },
+                    )
+                    HorizontalDivider()
+                    SettingsActionRow(
+                        title = "Izvozi v CSV",
+                        subtitle = "Tabela vseh iger za Excel ali Google Sheets",
                         action = "Izvozi",
                         actionColor = MaterialTheme.colorScheme.primary,
                         onClick = { exportAllSessions() },
@@ -351,9 +392,10 @@ fun SettingsScreen(
                     HorizontalDivider()
                     SettingsActionRow(
                         title = "Počisti zgodovino",
-                        subtitle = "Briše vse shranjene seje",
+                        subtitle = "Briše vse shranjene seje (prej shrani kopijo na telefon)",
                         action = "Počisti",
                         actionColor = StihRed,
+                        enabled = sessionManager.savedSessions.isNotEmpty(),
                         onClick = { showClearConfirmation = true },
                     )
                 }
@@ -361,15 +403,34 @@ fun SettingsScreen(
         }
     }
 
+    clearError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { clearError = null },
+            title = { Text("Počisti zgodovino") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { clearError = null }) { Text("V redu") } },
+        )
+    }
+
     if (showClearConfirmation) {
         AlertDialog(
             onDismissRequest = { showClearConfirmation = false },
             title = { Text("Počisti zgodovino") },
-            text = { Text("Ali ste prepričani, da želite izbrisati vse shranjene seje? Te akcije ni mogoče razveljaviti.") },
+            text = {
+                Text(
+                    "Izbrisane bodo vse shranjene seje (${sessionManager.savedSessions.size}). Prej se na telefon " +
+                        "shrani kopija, ki jo lahko vrneš v »Obnovi iz kopije«.",
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    sessionManager.clearAllSessions()
                     showClearConfirmation = false
+                    try {
+                        sessionManager.clearHistory(settings.toBackupSettings())
+                    } catch (_: Exception) {
+                        // No copy, no delete
+                        clearError = "Zgodovina ni izbrisana: kopije pred brisanjem ni bilo mogoče shraniti."
+                    }
                 }) { Text("Počisti", color = StihRed) }
             },
             dismissButton = {
@@ -443,6 +504,7 @@ private fun SettingsActionRow(
     subtitle: String,
     action: String,
     actionColor: Color,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -450,6 +512,8 @@ private fun SettingsActionRow(
             Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onClick = onClick) { Text(action, color = actionColor) }
+        TextButton(onClick = onClick, enabled = enabled) {
+            Text(action, color = if (enabled) actionColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f))
+        }
     }
 }

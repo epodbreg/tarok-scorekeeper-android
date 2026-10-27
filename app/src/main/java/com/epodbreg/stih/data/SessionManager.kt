@@ -26,6 +26,12 @@ class SessionManager(context: Context) {
 
     private val sessionsFile = File(context.filesDir, "tarok_sessions.json")
     private val activeSessionFile = File(context.filesDir, "active_session.json")
+    /** Automatic copies (see BackupStore) */
+    val backupsDir = File(context.filesDir, "Backups")
+    /** Written into backups so the other phone can show "Iz: Android, Štih 1.8" */
+    val appVersion: String = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    }.getOrNull() ?: "?"
 
     /**
      * Set when the history file exists but could neither be read nor copied aside — then we
@@ -110,7 +116,48 @@ class SessionManager(context: Context) {
         persistSessions()
     }
 
-    fun clearAllSessions() {
+    // ---- Backup & restore -----------------------------------------------------
+
+    /** Everything on this phone as one backup (see Backup.kt). */
+    fun makeBackup(settings: BackupSettings?): StihBackup = StihBackup(
+        sessions = savedSessions,
+        activeSession = activeSession,
+        settings = settings,
+        exportedAt = System.currentTimeMillis(),
+        app = StihBackup.AppInfo("android", appVersion),
+    )
+
+    fun restorePlan(backup: StihBackup) = RestorePlan(backup, savedSessions, activeSession)
+
+    /**
+     * Adds the plan's sessions (skipping any that appeared on the phone since) and, if the
+     * phone has no unfinished game, the backup's one. Never removes or changes anything.
+     * Returns how many sessions were added.
+     */
+    fun applyRestore(plan: RestorePlan): Int {
+        val known = savedSessions.map { it.id }.toMutableSet()
+        activeSession?.let { known += it.id }
+        val toAdd = plan.newSessions.filter { it.id !in known }
+        if (toAdd.isNotEmpty()) {
+            savedSessions = savedSessions + toAdd
+            persistSessions()
+        }
+        val unfinished = plan.activeSession
+        if (unfinished != null && activeSession == null && unfinished.id !in known) {
+            activeSession = unfinished
+            persistActiveSession()
+        }
+        return toAdd.size
+    }
+
+    /**
+     * Deletes all saved sessions (not the game in progress) — after writing a full backup to
+     * the phone, so it can be undone from "Obnovi iz kopije". Throws, deleting nothing, if
+     * that backup can't be written.
+     */
+    fun clearHistory(settings: BackupSettings?) {
+        if (savedSessions.isEmpty()) return
+        BackupStore.writeBeforeClearCopy(makeBackup(settings), backupsDir, appVersion)
         savedSessions = emptyList()
         persistSessions()
     }
@@ -197,6 +244,7 @@ class SessionManager(context: Context) {
 
     private fun persistSessions() {
         if (sessionsFileIsProtected) return
+        BackupStore.makeDailyCopy(sessionsFile, backupsDir)
         try {
             writeAtomically(sessionsFile, json.encodeToString(savedSessions))
         } catch (_: Exception) {

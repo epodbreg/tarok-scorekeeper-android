@@ -1,5 +1,6 @@
 package com.epodbreg.stih.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -12,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonTransformingSerializer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
@@ -269,7 +271,12 @@ data class GameSession(
      * Manual dealer adjustment. The effective dealer is
      * (dealerManualOffset + count of dealer-advancing games) mod playerCount.
      * Null on sessions saved before this field existed — back-solved on load.
+     * Stored as "dealerOffset" (the name iOS and the shared backup format use); files
+     * written before 1.8 used "dealerManualOffset", which still reads.
      */
+    @OptIn(ExperimentalSerializationApi::class)
+    @SerialName("dealerOffset")
+    @JsonNames("dealerManualOffset")
     val dealerManualOffset: Int? = null,
     /** Optional group ("Torek") for filtering stats; null = no group */
     val groupName: String? = null,

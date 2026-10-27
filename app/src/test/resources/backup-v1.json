@@ -1,0 +1,497 @@
+{
+  "format": "stih-backup",
+  "version": 1,
+  "exportedAt": 1792783800000,
+  "app": {
+    "platform": "android",
+    "version": "1.8"
+  },
+  "futureField": "apps ignore fields they don't know",
+  "sessions": [
+    {
+      "id": "6f1c2a9e-3b4d-4c5e-9f60-7a8b9c0d1e2f",
+      "players": [
+        {
+          "id": "00000001-aaaa-4bbb-8ccc-000000000001",
+          "name": "Elias",
+          "score": 0,
+          "radlci": [
+            true
+          ]
+        },
+        {
+          "id": "00000002-aaaa-4bbb-8ccc-000000000002",
+          "name": "Nina",
+          "score": 0,
+          "radlci": [
+            false
+          ]
+        },
+        {
+          "id": "00000003-aaaa-4bbb-8ccc-000000000003",
+          "name": "Marko A.",
+          "score": 0,
+          "radlci": []
+        },
+        {
+          "id": "00000004-aaaa-4bbb-8ccc-000000000004",
+          "name": "Tjaša",
+          "score": 0,
+          "radlci": []
+        }
+      ],
+      "startTime": 1792602000000,
+      "endTime": 1792617300000,
+      "games": [
+        {
+          "id": "11111111-2222-4333-8444-555555555501",
+          "contract": "dve",
+          "declarerName": "Elias",
+          "partnerName": "Nina",
+          "outcome": "zmagal",
+          "pointsBreakdown": {
+            "gamePoints": 20,
+            "difference": 15,
+            "trula": 10,
+            "kralji": null,
+            "kraljUltimo": null,
+            "pagatUltimo": null,
+            "valat": null,
+            "mondKaz": null,
+            "kontraLevel": 1
+          },
+          "bonuses": [
+            {
+              "type": "trula",
+              "announced": false,
+              "won": true,
+              "kontraLevel": 0
+            }
+          ],
+          "totalPoints": 80,
+          "timestamp": 1792603200000,
+          "klopScores": null,
+          "rawKlopScores": null,
+          "rawTotalPoints": 80,
+          "underlyingGame": null,
+          "isValatAnnounced": null,
+          "kontraCallerName": "Marko A."
+        },
+        {
+          "id": "11111111-2222-4333-8444-555555555502",
+          "contract": "klop",
+          "declarerName": "",
+          "partnerName": null,
+          "outcome": "zmagal",
+          "pointsBreakdown": {
+            "gamePoints": 0,
+            "difference": null,
+            "trula": null,
+            "kralji": null,
+            "kraljUltimo": null,
+            "pagatUltimo": null,
+            "valat": null,
+            "mondKaz": null,
+            "kontraLevel": 0
+          },
+          "bonuses": [],
+          "totalPoints": 0,
+          "timestamp": 1792604700000,
+          "klopScores": {
+            "Elias": -30,
+            "Nina": 70,
+            "Marko A.": -10,
+            "Tjaša": -30
+          },
+          "rawKlopScores": {
+            "Elias": -30,
+            "Nina": 70,
+            "Marko A.": -10,
+            "Tjaša": -30
+          },
+          "rawTotalPoints": 0,
+          "underlyingGame": null,
+          "isValatAnnounced": null,
+          "kontraCallerName": null
+        }
+      ],
+      "finalScores": [
+        {
+          "name": "Elias",
+          "score": 50,
+          "position": 1
+        },
+        {
+          "name": "Nina",
+          "score": 70,
+          "position": 2
+        },
+        {
+          "name": "Marko A.",
+          "score": -10,
+          "position": 3
+        },
+        {
+          "name": "Tjaša",
+          "score": -30,
+          "position": 4
+        }
+      ],
+      "currentDealerIndex": 2,
+      "dealerOffset": 0,
+      "groupName": "Torek"
+    },
+    {
+      "id": "7a2d3b0f-4c5e-4d6f-8a71-8b9c0d1e2f30",
+      "players": [
+        {
+          "id": "00000005-aaaa-4bbb-8ccc-000000000005",
+          "name": "Ana",
+          "score": 0,
+          "radlci": []
+        },
+        {
+          "id": "00000006-aaaa-4bbb-8ccc-000000000006",
+          "name": "Bor",
+          "score": 0,
+          "radlci": []
+        },
+        {
+          "id": "00000007-aaaa-4bbb-8ccc-000000000007",
+          "name": "Jure",
+          "score": 0,
+          "radlci": []
+        }
+      ],
+      "startTime": 1791828000000,
+      "endTime": 1791835200000,
+      "games": [
+        {
+          "id": "11111111-2222-4333-8444-555555555503",
+          "contract": "tri",
+          "declarerName": "Ana",
+          "partnerName": null,
+          "outcome": "izgubil",
+          "pointsBreakdown": {
+            "gamePoints": 10,
+            "difference": 5,
+            "trula": null,
+            "kralji": null,
+            "kraljUltimo": null,
+            "pagatUltimo": null,
+            "valat": null,
+            "mondKaz": null,
+            "kontraLevel": 0
+          },
+          "bonuses": [],
+          "totalPoints": -15,
+          "timestamp": 1791828600000,
+          "klopScores": null,
+          "rawKlopScores": null,
+          "rawTotalPoints": -15,
+          "underlyingGame": null,
+          "isValatAnnounced": null,
+          "kontraCallerName": null
+        }
+      ],
+      "finalScores": null,
+      "currentDealerIndex": 1,
+      "dealerOffset": null,
+      "groupName": null
+    }
+  ],
+  "activeSession": {
+    "id": "8b3e4c10-5d6f-4e70-9b82-9c0d1e2f3041",
+    "players": [
+      {
+        "id": "00000001-aaaa-4bbb-8ccc-000000000001",
+        "name": "Elias",
+        "score": 0,
+        "radlci": [
+          true
+        ]
+      },
+      {
+        "id": "00000002-aaaa-4bbb-8ccc-000000000002",
+        "name": "Nina",
+        "score": 0,
+        "radlci": [
+          false
+        ]
+      },
+      {
+        "id": "00000003-aaaa-4bbb-8ccc-000000000003",
+        "name": "Marko A.",
+        "score": 0,
+        "radlci": []
+      },
+      {
+        "id": "00000004-aaaa-4bbb-8ccc-000000000004",
+        "name": "Tjaša",
+        "score": 0,
+        "radlci": []
+      }
+    ],
+    "startTime": 1792778400000,
+    "endTime": null,
+    "games": [
+      {
+        "id": "11111111-2222-4333-8444-555555555504",
+        "contract": "ena",
+        "declarerName": "Tjaša",
+        "partnerName": "Elias",
+        "outcome": "zmagalSlepal",
+        "pointsBreakdown": {
+          "gamePoints": 30,
+          "difference": 0,
+          "trula": null,
+          "kralji": null,
+          "kraljUltimo": null,
+          "pagatUltimo": null,
+          "valat": null,
+          "mondKaz": null,
+          "kontraLevel": 0
+        },
+        "bonuses": [],
+        "totalPoints": 30,
+        "timestamp": 1792779300000,
+        "klopScores": null,
+        "rawKlopScores": null,
+        "rawTotalPoints": 30,
+        "underlyingGame": null,
+        "isValatAnnounced": null,
+        "kontraCallerName": null
+      }
+    ],
+    "finalScores": null,
+    "currentDealerIndex": 1,
+    "dealerOffset": 0,
+    "groupName": "Torek"
+  },
+  "settings": {
+    "autoScoring": true,
+    "houseScoringRules": "Domača",
+    "showAnimations": true,
+    "soundEffects": false,
+    "obvezniKlopEnabled": true,
+    "obvezniKlopOnRoundScore": true,
+    "obvezniKlopOnZeroOutcome": false,
+    "obvezniKlopStep": 1000,
+    "autoRadlci": true,
+    "myPlayerName": "Elias",
+    "customRules": [
+      {
+        "name": "Domača",
+        "contractScores": {
+          "tri": {
+            "threePlayerScore": 10,
+            "fourPlusPlayerScore": 10,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "dve": {
+            "threePlayerScore": 20,
+            "fourPlusPlayerScore": 20,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "ena": {
+            "threePlayerScore": 30,
+            "fourPlusPlayerScore": 30,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "soloTri": {
+            "threePlayerScore": 0,
+            "fourPlusPlayerScore": 40,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "soloDve": {
+            "threePlayerScore": 0,
+            "fourPlusPlayerScore": 50,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "soloEna": {
+            "threePlayerScore": 0,
+            "fourPlusPlayerScore": 60,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "berac": {
+            "threePlayerScore": 70,
+            "fourPlusPlayerScore": 70,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          },
+          "soloBrez": {
+            "threePlayerScore": 80,
+            "fourPlusPlayerScore": 80,
+            "usesRazlika": true,
+            "hasFixedScoring": false
+          },
+          "odprtiBerac": {
+            "threePlayerScore": 90,
+            "fourPlusPlayerScore": 90,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          },
+          "barvniValat": {
+            "threePlayerScore": 125,
+            "fourPlusPlayerScore": 125,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          },
+          "valat": {
+            "threePlayerScore": 500,
+            "fourPlusPlayerScore": 500,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          },
+          "penaltyMond": {
+            "threePlayerScore": 20,
+            "fourPlusPlayerScore": 20,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          },
+          "penaltyRenons": {
+            "threePlayerScore": 20,
+            "fourPlusPlayerScore": 20,
+            "usesRazlika": false,
+            "hasFixedScoring": true
+          }
+        },
+        "bonusScores": {
+          "trulaBase": 10,
+          "trulaAnnounced": 20,
+          "kraljBase": 10,
+          "kraljAnnounced": 20,
+          "kraljUltimoBase": 10,
+          "kraljUltimoAnnounced": 20,
+          "pagatUltimoBase": 25,
+          "pagatUltimoAnnounced": 50,
+          "mondKazBase": 20,
+          "tihiValat": 250,
+          "napovedanValat": 500
+        },
+        "generalRules": {
+          "radlcDoublingDeclarerOnly": true,
+          "radlcPenaltyPerUnused": 100,
+          "radlcPenaltyEnabled": true,
+          "radlcDoublesKlop": true,
+          "radlcDoublesPagat": true,
+          "renonsPenalty": 30,
+          "enableAutoScoring": true,
+          "valatWithGamePoints": false
+        }
+      }
+    ],
+    "currentRuleSet": {
+      "name": "Domača",
+      "contractScores": {
+        "tri": {
+          "threePlayerScore": 10,
+          "fourPlusPlayerScore": 10,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "dve": {
+          "threePlayerScore": 20,
+          "fourPlusPlayerScore": 20,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "ena": {
+          "threePlayerScore": 30,
+          "fourPlusPlayerScore": 30,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "soloTri": {
+          "threePlayerScore": 0,
+          "fourPlusPlayerScore": 40,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "soloDve": {
+          "threePlayerScore": 0,
+          "fourPlusPlayerScore": 50,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "soloEna": {
+          "threePlayerScore": 0,
+          "fourPlusPlayerScore": 60,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "berac": {
+          "threePlayerScore": 70,
+          "fourPlusPlayerScore": 70,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        },
+        "soloBrez": {
+          "threePlayerScore": 80,
+          "fourPlusPlayerScore": 80,
+          "usesRazlika": true,
+          "hasFixedScoring": false
+        },
+        "odprtiBerac": {
+          "threePlayerScore": 90,
+          "fourPlusPlayerScore": 90,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        },
+        "barvniValat": {
+          "threePlayerScore": 125,
+          "fourPlusPlayerScore": 125,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        },
+        "valat": {
+          "threePlayerScore": 500,
+          "fourPlusPlayerScore": 500,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        },
+        "penaltyMond": {
+          "threePlayerScore": 20,
+          "fourPlusPlayerScore": 20,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        },
+        "penaltyRenons": {
+          "threePlayerScore": 20,
+          "fourPlusPlayerScore": 20,
+          "usesRazlika": false,
+          "hasFixedScoring": true
+        }
+      },
+      "bonusScores": {
+        "trulaBase": 10,
+        "trulaAnnounced": 20,
+        "kraljBase": 10,
+        "kraljAnnounced": 20,
+        "kraljUltimoBase": 10,
+        "kraljUltimoAnnounced": 20,
+        "pagatUltimoBase": 25,
+        "pagatUltimoAnnounced": 50,
+        "mondKazBase": 20,
+        "tihiValat": 250,
+        "napovedanValat": 500
+      },
+      "generalRules": {
+        "radlcDoublingDeclarerOnly": true,
+        "radlcPenaltyPerUnused": 100,
+        "radlcPenaltyEnabled": true,
+        "radlcDoublesKlop": true,
+        "radlcDoublesPagat": true,
+        "renonsPenalty": 30,
+        "enableAutoScoring": true,
+        "valatWithGamePoints": false
+      }
+    }
+  }
+}
