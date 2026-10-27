@@ -2,6 +2,7 @@ package com.epodbreg.stih
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -79,6 +80,12 @@ private fun StihApp() {
         val session = sessionManager.activeSession ?: return
         gameViewModel = GameViewModel(sessionManager, settings, session.players)
         screen = Screen.Game
+    }
+
+    // System back from a simple top-level screen returns home instead of closing the app
+    // (the game and end screens handle back themselves)
+    BackHandler(enabled = screen in listOf(Screen.PlayerSetup, Screen.History, Screen.Settings, Screen.Credits)) {
+        screen = Screen.Home
     }
 
     when (val s = screen) {
