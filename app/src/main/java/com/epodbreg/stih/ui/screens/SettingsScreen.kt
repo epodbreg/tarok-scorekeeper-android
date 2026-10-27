@@ -77,6 +77,8 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showClearConfirmation by remember { mutableStateOf(false) }
     var showRestore by remember { mutableStateOf(false) }
+    // Remembered before the sub-screens below, so returning from them keeps the scroll position
+    val scrollState = rememberScrollState()
     var clearError by remember { mutableStateOf<String?>(null) }
     var editingRules by remember { mutableStateOf<CustomScoringRules?>(null) }
     var editingOriginalName by remember { mutableStateOf<String?>(null) }
@@ -172,7 +174,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
