@@ -212,7 +212,27 @@ data class GameEntry(
     val isValatAnnounced: Boolean? = null,
     /** Opponent who called the game-level kontra (optional; null for older entries) */
     val kontraCallerName: String? = null,
+    /**
+     * What the partner got, when it differs from [totalPoints] (the declarer's radlc doubled the
+     * game but the rules don't double the partner). null = same as the declarer. Read it
+     * through [pointsFor].
+     */
+    val partnerPoints: Int? = null,
 ) {
+    /** The real partner (null when there's none, or the declarer zarufal) */
+    val actualPartner: String?
+        get() = partnerName?.takeIf {
+            it.isNotEmpty() && it != TarokStrings.ZARUFAL && it != declarerName
+        }
+
+    /** Points this game gave [name]: klop score, declarer's points, partner's points, else 0 */
+    fun pointsFor(name: String): Int = when {
+        contract == TarokContract.KLOP -> klopScores?.get(name) ?: 0
+        name == declarerName -> totalPoints
+        name == actualPartner -> partnerPoints ?: totalPoints
+        else -> 0
+    }
+
     /**
      * Copy with every reference to [oldName] replaced by [newName]
      * (declarer, partner, kontra caller, klop score keys). Identity is preserved.
@@ -280,6 +300,13 @@ data class GameSession(
     val dealerManualOffset: Int? = null,
     /** Optional group ("Torek") for filtering stats; null = no group */
     val groupName: String? = null,
+    /**
+     * The rules this game is scored with: a copy of the selected set, taken when it started.
+     * null for games from before 1.9 (they get today's rules when resumed). A damaged value
+     * reads as null, so it never costs the game.
+     */
+    @Serializable(with = LenientRulesSerializer::class)
+    val rules: CustomScoringRules? = null,
 ) {
     val playerNames: List<String> get() = players.map { it.name }
     val isActive: Boolean get() = endTime == null

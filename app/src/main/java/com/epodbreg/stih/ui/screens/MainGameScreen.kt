@@ -2,6 +2,10 @@ package com.epodbreg.stih.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,11 +57,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.epodbreg.stih.data.SessionManager
+import com.epodbreg.stih.logic.PlayerCardSlot
+import com.epodbreg.stih.logic.PlayerCardsLayout
+import com.epodbreg.stih.logic.Standings
 import com.epodbreg.stih.logic.TarokScorer
 import com.epodbreg.stih.model.GameEntry
 import com.epodbreg.stih.model.GameSession
@@ -68,6 +78,8 @@ import com.epodbreg.stih.ui.GameViewModel
 import com.epodbreg.stih.ui.components.GameHistoryCard
 import com.epodbreg.stih.ui.components.GameStepperSheet
 import com.epodbreg.stih.ui.components.KlopGameCard
+import com.epodbreg.stih.ui.components.PlayerCardStyle
+import com.epodbreg.stih.ui.components.PlayerCardsGrid
 import com.epodbreg.stih.ui.components.PlayerScoreCard
 import com.epodbreg.stih.ui.theme.StihGreen
 import com.epodbreg.stih.ui.theme.StihOrange
@@ -88,7 +100,8 @@ private sealed interface EditState {
 fun MainGameScreen(
     viewModel: GameViewModel,
     onSessionCompleted: (GameSession) -> Unit,
-    onExitWithoutSaving: () -> Unit,
+    /** Back to the home screen; the game stays saved */
+    onLeave: () -> Unit,
 ) {
     var editState: EditState by remember { mutableStateOf(EditState.Idle) }
     var expandedPlayerIds by remember { mutableStateOf(setOf<UUID>()) }
@@ -144,10 +157,15 @@ fun MainGameScreen(
                 title = {
                     Column {
                         Text("Tarok igra", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        // With more than one rule set, say which one this game uses
+                        val date = SessionManager.formatSessionDate(viewModel.sessionStartTime)
                         Text(
-                            SessionManager.formatSessionDate(viewModel.sessionStartTime),
+                            if (viewModel.settings.customRules.isEmpty()) date
+                            else "$date · ${viewModel.settings.rules.name}",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 },
@@ -198,31 +216,63 @@ fun MainGameScreen(
                         .padding(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    // Player cards, sorted by standing
-                    viewModel.standings.forEach { (player, rank) ->
-                        PlayerScoreCard(
-                            player = player,
-                            standing = rank,
-                            isExpanded = player.id in expandedPlayerIds,
-                            isDealer = player.name == viewModel.getCurrentDealerName(),
-                            isSlepar = player.name in viewModel.slepaci,
-                            liveNetScore = viewModel.liveNetScore(player),
-                            showNetScore = viewModel.settings.currentRuleSet.generalRules.radlcPenaltyEnabled &&
-                                player.hasUnusedRadlci,
-                            gameHistory = viewModel.gameHistory,
-                            onExpandToggle = {
-                                expandedPlayerIds = if (player.id in expandedPlayerIds) {
-                                    expandedPlayerIds - player.id
-                                } else {
-                                    expandedPlayerIds + player.id
+                    // Compact: the sole leader full width, the rest two per row; an opened half
+                    // card's details open under its row. One layout, so cards slide, not swap.
+                    val standings = viewModel.standings
+                    val leaderId = Standings.soleLeader(standings)?.id
+                    val byId = standings.associateBy { it.first.id }
+                    val compact = viewModel.settings.compactCards.isCompact(viewModel.players.size)
+                    val order = standings.map { it.first.id }
+                    val slots = if (compact) {
+                        PlayerCardsLayout.compactSlots(order, soleLeader = leaderId, opened = expandedPlayerIds)
+                    } else {
+                        PlayerCardsLayout.fullSlots(order)
+                    }
+                    PlayerCardsGrid(slots = slots, modifier = Modifier.padding(horizontal = 12.dp)) { slot ->
+                        val (player, rank) = byId[slot.player] ?: return@PlayerCardsGrid
+                        val style = when (val kind = slot.kind) {
+                            is PlayerCardSlot.Kind.Card -> if (kind.fullWidth) PlayerCardStyle.STANDARD else PlayerCardStyle.HALF
+                            is PlayerCardSlot.Kind.Details -> PlayerCardStyle.DETAILS
+                        }
+                        val card = @Composable {
+                            PlayerScoreCard(
+                                player = player,
+                                standing = rank,
+                                isLeader = player.id == leaderId,
+                                isExpanded = player.id in expandedPlayerIds,
+                                isDealer = player.name == viewModel.getCurrentDealerName(),
+                                isSlepar = player.name in viewModel.slepaci,
+                                liveNetScore = viewModel.liveNetScore(player),
+                                showNetScore = viewModel.settings.rules.generalRules.radlcPenaltyEnabled &&
+                                    player.hasUnusedRadlci,
+                                gameHistory = viewModel.gameHistory,
+                                style = style,
+                                onExpandToggle = {
+                                    expandedPlayerIds = when {
+                                        player.id in expandedPlayerIds -> expandedPlayerIds - player.id
+                                        // One half card open at a time; the leader's full card is separate
+                                        compact -> expandedPlayerIds.filter { it == leaderId }.toSet() + player.id
+                                        else -> expandedPlayerIds + player.id
+                                    }
+                                },
+                                onPenalty = { penaltyPlayerId = player.id },
+                                // Auto-radlci lock: pips are read-only status unless disabled
+                                onRadlcTap = if (viewModel.settings.autoRadlci) null
+                                else { index -> viewModel.toggleRadlc(player.id, index) },
+                            )
+                        }
+                        val details = slot.kind as? PlayerCardSlot.Kind.Details
+                        if (details == null) {
+                            card()
+                        } else {
+                            val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+                            AnimatedVisibility(visibleState = appear, enter = fadeIn() + expandVertically(expandFrom = Alignment.Top)) {
+                                Box {
+                                    card()
+                                    DetailsPointer(underLeftCard = details.underLeftCard)
                                 }
-                            },
-                            onPenalty = { penaltyPlayerId = player.id },
-                            // Auto-radlci lock: pips are read-only status unless disabled
-                            onRadlcTap = if (viewModel.settings.autoRadlci) null
-                            else { index -> viewModel.toggleRadlc(player.id, index) },
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                        )
+                            }
+                        }
                     }
 
                     // Add game button
@@ -278,7 +328,7 @@ fun MainGameScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (viewModel.gameHistory.isEmpty()) {
                                     Text(
-                                        "Ni zabeleženih iger.\nDodajte prvo igro za začetek",
+                                        "Ni zabeleženih iger.\nDodaj prvo igro za začetek",
                                         textAlign = TextAlign.Center,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
@@ -379,7 +429,7 @@ fun MainGameScreen(
             initialContract = obvezniKlopPreselected,
             onSave = { entry ->
                 val result = TarokScorer.processGame(
-                    entry, viewModel.players, viewModel.settings.currentRuleSet.generalRules,
+                    entry, viewModel.players, viewModel.settings.rules.generalRules,
                 )
                 viewModel.addProcessedGameEntry(result.entry, result.players)
                 editState = EditState.Idle
@@ -424,7 +474,7 @@ fun MainGameScreen(
     penaltyPlayerId?.let { playerId ->
         val player = viewModel.players.firstOrNull { it.id == playerId }
         if (player != null) {
-            val rules = viewModel.settings.currentRuleSet
+            val rules = viewModel.settings.rules
             PenaltyDialog(
                 player = player,
                 pagatPoints = kotlin.math.abs(rules.bonusScores.pagatUltimoBase),
@@ -443,7 +493,7 @@ fun MainGameScreen(
                     // Through the scorer: pagat quick-award gets radlc doubling
                     // (without consuming); mond/renons pass through untouched.
                     val result = TarokScorer.processGame(
-                        entry, viewModel.players, viewModel.settings.currentRuleSet.generalRules,
+                        entry, viewModel.players, viewModel.settings.rules.generalRules,
                     )
                     viewModel.addProcessedGameEntry(result.entry, result.players)
                     penaltyPlayerId = null
@@ -460,7 +510,7 @@ fun MainGameScreen(
         AlertDialog(
             onDismissRequest = { gameToDelete = null },
             title = { Text("Izbriši igro?") },
-            text = { Text("Ali želite izbrisati ${game.contract.displayName} igro?") },
+            text = { Text("${game.contract.displayName}, ${game.declarerName}. Takoj zatem jo lahko vrneš z »Razveljavi«.") },
             confirmButton = {
                 TextButton(onClick = {
                     deletedRadlcSnapshot = viewModel.players.associate { it.name to it.radlci }
@@ -476,25 +526,61 @@ fun MainGameScreen(
         )
     }
 
-    // Back warning
+    // Back: leaving keeps the game (it's saved after every round); ending it goes to the summary
     if (showBackWarning) {
         AlertDialog(
             onDismissRequest = { showBackWarning = false },
             title = { Text("Zapusti igro?") },
-            text = { Text("Ste prepričani, da želite zapustiti igro, brez da shranite?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showBackWarning = false
-                    onExitWithoutSaving()
-                }) { Text("Ja", color = StihRed) }
+            text = {
+                Text(
+                    "Igra ostane shranjena in jo lahko nadaljuješ pozneje. Ko je večera konec, jo zaključi: " +
+                        "dobiš povzetek in igra gre v zgodovino.",
+                )
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    showBackWarning = false
-                    viewModel.endSession()?.let { onSessionCompleted(it) }
-                }) { Text("Ne, shrani") }
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        showBackWarning = false
+                        onLeave()
+                    }) { Text("Na začetni zaslon") }
+                    TextButton(onClick = {
+                        showBackWarning = false
+                        viewModel.endSession()?.let { onSessionCompleted(it) }
+                    }) { Text("Zaključi igro") }
+                    TextButton(onClick = { showBackWarning = false }) { Text("Ostani") }
+                }
             },
         )
+    }
+}
+
+/** Small arrow on top of a details panel, pointing at its card in the row above */
+@Composable
+private fun DetailsPointer(underLeftCard: Boolean) {
+    val color = MaterialTheme.colorScheme.primary
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset(y = (-7).dp),
+    ) {
+        listOf(true, false).forEach { left ->
+            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                if (left == underLeftCard) {
+                    Canvas(Modifier.size(width = 14.dp, height = 7.dp)) {
+                        drawPath(
+                            Path().apply {
+                                moveTo(size.width / 2, 0f)
+                                lineTo(size.width, size.height)
+                                lineTo(0f, size.height)
+                                close()
+                            },
+                            color,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

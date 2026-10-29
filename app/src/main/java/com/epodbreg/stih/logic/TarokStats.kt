@@ -242,7 +242,8 @@ object TarokStats {
                 }
             }
 
-            // Points go to the declarer and partner (same points). Zarufal is never a partner.
+            // Points go to the declarer and partner (the partner's can differ: radlc doubling
+            // only the declarer). Zarufal is never a partner.
             val credited = mutableListOf(declarer)
             val partner = game.partnerName
             if (partner != null && partner != ZARUFAL && partner != declarer && acc[partner] != null) {
@@ -251,18 +252,19 @@ object TarokStats {
                     p.partnerRounds++
                     if (won) {
                         p.partnerWins++
-                        p.biggestSlep = maxOf(p.biggestSlep, game.totalPoints)
+                        p.biggestSlep = maxOf(p.biggestSlep, game.pointsFor(partner))
                     }
                 }
             }
             for (name in credited) {
                 val a = acc[name] ?: continue
-                a.pointsEarned += game.totalPoints
-                if (game.totalPoints > 0 && game.totalPoints > (a.biggestWin?.points ?: Int.MIN_VALUE)) {
-                    a.biggestWin = ContractPoints(game.totalPoints, game.contract)
+                val points = game.pointsFor(name)
+                a.pointsEarned += points
+                if (points > 0 && points > (a.biggestWin?.points ?: Int.MIN_VALUE)) {
+                    a.biggestWin = ContractPoints(points, game.contract)
                 }
-                if (game.totalPoints < 0 && game.totalPoints < (a.worstLoss?.points ?: Int.MAX_VALUE)) {
-                    a.worstLoss = ContractPoints(game.totalPoints, game.contract)
+                if (points < 0 && points < (a.worstLoss?.points ?: Int.MAX_VALUE)) {
+                    a.worstLoss = ContractPoints(points, game.contract)
                 }
                 // Bonuses belong to the whole declarer side
                 for (bonus in game.bonuses) {
@@ -340,7 +342,7 @@ object TarokStats {
             .firstOrNull()?.takeIf { it.value.biggestSlep > 0 }
             ?.let { (name, s) ->
                 val contract = realRounds.firstOrNull {
-                    it.partnerName == name && it.totalPoints == s.biggestSlep
+                    it.actualPartner == name && it.pointsFor(name) == s.biggestSlep
                 }?.contract ?: TarokContract.TRI
                 NamedPoints(name, s.biggestSlep, contract)
             }
@@ -374,12 +376,7 @@ object TarokStats {
     }
 
     /** Points a player got from one real round (0 if they weren't on the declarer side). */
-    private fun pointsCredited(game: GameEntry, name: String): Int = when {
-        game.contract == TarokContract.KLOP -> game.klopScores?.get(name) ?: 0
-        game.declarerName == name -> game.totalPoints
-        game.partnerName != null && game.partnerName != ZARUFAL && game.partnerName == name -> game.totalPoints
-        else -> 0
-    }
+    private fun pointsCredited(game: GameEntry, name: String): Int = game.pointsFor(name)
 
     /** Players credited in a round, declarer before partner; klop in seat order. */
     private fun creditedPlayers(game: GameEntry, seatOrder: List<String>): List<String> {

@@ -236,7 +236,7 @@ fun GameStepperSheet(
 
     fun stepAfterContract(c: TarokContract): AddGameStep = when {
         c == TarokContract.KLOP -> AddGameStep.KLOP
-        c == TarokContract.VALAT && settings.currentRuleSet.generalRules.valatWithGamePoints -> {
+        c == TarokContract.VALAT && settings.rules.generalRules.valatWithGamePoints -> {
             selectedPartner = null
             AddGameStep.UNDERLYING_GAME
         }
@@ -318,7 +318,7 @@ fun GameStepperSheet(
             else -> TarokStrings.ZARUFAL
         }
         var totalPoints = settings.getValatBaseScore(isValatAnnounced)
-        if (settings.currentRuleSet.generalRules.valatWithGamePoints) {
+        if (settings.rules.generalRules.valatWithGamePoints) {
             selectedUnderlyingGame?.let { totalPoints += settings.getContractBaseScore(it, players.size) }
         }
         if (outcome == HandOutcome.IZGUBIL) totalPoints = -totalPoints
@@ -333,7 +333,7 @@ fun GameStepperSheet(
                 pointsBreakdown = PointsBreakdown(gamePoints = totalPoints, kontraLevel = gameKontra),
                 bonuses = emptyList(),
                 totalPoints = totalPoints,
-                underlyingGame = if (settings.currentRuleSet.generalRules.valatWithGamePoints) selectedUnderlyingGame else null,
+                underlyingGame = if (settings.rules.generalRules.valatWithGamePoints) selectedUnderlyingGame else null,
                 isValatAnnounced = isValatAnnounced,
                 kontraCallerName = resolvedKontraCaller(),
             )
@@ -1145,7 +1145,7 @@ private fun ValatTypeSelection(
         val base = settings.getValatBaseScore(isValatAnnounced)
         val rows = buildList {
             add((if (isValatAnnounced) "Napovedan valat" else "Tihi valat") to "$base točk")
-            if (underlyingGame != null && settings.currentRuleSet.generalRules.valatWithGamePoints) {
+            if (underlyingGame != null && settings.rules.generalRules.valatWithGamePoints) {
                 val ugScore = settings.getContractBaseScore(underlyingGame, playerCount)
                 add(underlyingGame.displayName to "+$ugScore točk")
                 add("Skupaj" to "${base + ugScore} točk")

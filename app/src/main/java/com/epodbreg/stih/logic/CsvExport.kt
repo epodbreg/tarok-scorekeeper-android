@@ -76,8 +76,11 @@ fun GameSession.csvExport(): String {
                     val v = game.klopScores?.get(player.name) ?: 0
                     if (v == 0) "0" else signed(v)
                 }
-                player.name == game.declarerName || player.name == partner ->
-                    if (game.totalPoints == 0) "0" else signed(game.totalPoints)
+                player.name == game.declarerName || player.name == partner -> {
+                    // The partner's can differ (radlc doubling only the declarer)
+                    val v = game.pointsFor(player.name)
+                    if (v == 0) "0" else signed(v)
+                }
                 else -> ""
             }
         }

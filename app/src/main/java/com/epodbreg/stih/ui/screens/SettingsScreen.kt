@@ -25,8 +25,8 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Functions
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,6 +36,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,8 +59,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.epodbreg.stih.data.SessionManager
 import com.epodbreg.stih.data.SettingsManager
+import com.epodbreg.stih.model.BonusScoreConfig
+import com.epodbreg.stih.model.CompactCardsMode
 import com.epodbreg.stih.model.CustomScoringRules
-import com.epodbreg.stih.ui.theme.StihGreen
+import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.GeneralRulesConfig
+import com.epodbreg.stih.model.TarokContract
 import com.epodbreg.stih.ui.theme.StihOrange
 import com.epodbreg.stih.ui.theme.StihPurple
 import com.epodbreg.stih.ui.theme.StihRed
@@ -80,9 +87,10 @@ fun SettingsScreen(
     // Remembered before the sub-screens below, so returning from them keeps the scroll position
     val scrollState = rememberScrollState()
     var clearError by remember { mutableStateOf<String?>(null) }
+    /** The set the editor was opened with (Standard, a saved one, or a new one) */
     var editingRules by remember { mutableStateOf<CustomScoringRules?>(null) }
-    var editingOriginalName by remember { mutableStateOf<String?>(null) }
     var rulesMenuOpen by remember { mutableStateOf(false) }
+    var showApplyToRunningGame by remember { mutableStateOf(false) }
 
     if (showRestore) {
         BackHandler { showRestore = false }
@@ -92,23 +100,20 @@ fun SettingsScreen(
 
     val currentEditing = editingRules
     if (currentEditing != null) {
+        BackHandler { editingRules = null }
         CustomRulesEditorScreen(
             initialRules = currentEditing,
-            isExisting = editingOriginalName != null,
+            isPredefined = settings.isPredefined(currentEditing.name),
+            canDelete = settings.customRules.any { it.name == currentEditing.name },
             onSave = { updated ->
-                settings.addOrUpdateCustomRuleSet(updated, originalName = editingOriginalName)
+                settings.saveEditedRules(currentEditing, updated)
                 editingRules = null
-                editingOriginalName = null
             },
             onDelete = {
-                editingOriginalName?.let { settings.deleteCustomRuleSet(it) }
+                settings.deleteCustomRuleSet(currentEditing.name)
                 editingRules = null
-                editingOriginalName = null
             },
-            onCancel = {
-                editingRules = null
-                editingOriginalName = null
-            },
+            onCancel = { editingRules = null },
         )
         return
     }
@@ -129,26 +134,9 @@ fun SettingsScreen(
     }
 
     fun exportAllSessions() {
-        val sessions = sessionManager.savedSessions
-        val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val lines = mutableListOf("Datum,Čas,Igralci,Kontrakt,Glavni igralec,Partner,Rezultat,Točke,Bonusi")
-        for (session in sessions) {
-            val sessionDate = dateFormatter.format(Date(session.startTime))
-            val players = session.playerNames.joinToString(";")
-            for (game in session.games) {
-                val time = timeFormatter.format(Date(game.timestamp))
-                val bonuses = game.bonuses.joinToString(";") { it.type.rawValue }
-                lines.add(
-                    "\"$sessionDate\",\"$time\",\"$players\",\"${game.contract.rawValue}\"," +
-                        "\"${game.declarerName}\",\"${game.partnerName ?: ""}\",\"${game.outcome.rawValue}\"," +
-                        "\"${game.totalPoints}\",\"$bonuses\""
-                )
-            }
-        }
-        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val file = File(exportDir, "stih-vse-seje-${dateFormatter.format(Date())}.csv")
-        file.writeText(lines.joinToString("\n"))
+        val file = File(File(context.cacheDir, "exports").apply { mkdirs() },
+            "stih-vse-seje-${SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())}.csv")
+        file.writeText(allSessionsCsv(sessionManager.savedSessions))
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
@@ -178,7 +166,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Rules section
+            // Pravila: what depends on the table lives in the rule set (Uredi → Osnovno)
             SettingsSection(title = "Pravila", icon = Icons.AutoMirrored.Filled.MenuBook, iconColor = StihOrange) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Hišna pravila", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
@@ -206,163 +194,95 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(Modifier.weight(1f))
-                        if (settings.houseScoringRules != "Standard") {
-                            TextButton(onClick = {
-                                settings.customRules.firstOrNull { it.name == settings.houseScoringRules }?.let {
-                                    editingRules = it
-                                    editingOriginalName = it.name
-                                }
-                            }) { Text("Uredi") }
-                        }
+                        TextButton(onClick = { editingRules = settings.currentRuleSet }) { Text("Uredi") }
                     }
+                    RunningGameNote(
+                        session = sessionManager.activeSession,
+                        selected = settings.currentRuleSet,
+                        onApply = { showApplyToRunningGame = true },
+                    )
+                    Text(
+                        "Radlci, klop in točkovanje so v »Uredi« pod Osnovno — vsaka pravila (miza) imajo svoje.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     HorizontalDivider()
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.clickable {
-                            editingRules = CustomScoringRules(name = "Nova pravila")
-                            editingOriginalName = null
+                            editingRules = CustomScoringRules(
+                                name = settings.uniqueRuleSetName("Nova pravila"),
+                                generalRules = settings.currentRuleSet.generalRules,
+                            )
                         },
                     ) {
                         Icon(Icons.Filled.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         Text("Dodaj nova pravila", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
                     }
+                    val differences = rulesDifferences(settings.currentRuleSet)
+                    if (settings.houseScoringRules != SettingsManager.STANDARD || differences.isNotEmpty()) {
+                        HorizontalDivider()
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                if (differences.isEmpty()) "Enako kot standard" else "Spremembe od standarda:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            differences.forEach { line ->
+                                Text(line, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                 }
             }
 
-            // Game section
-            SettingsSection(title = "Igra", icon = Icons.Filled.SportsEsports, iconColor = StihGreen) {
+            // Aplikacija: how the app behaves, the same at every table
+            SettingsSection(title = "Aplikacija", icon = Icons.Filled.PhoneAndroid, iconColor = Color.Gray) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SettingsToggleRow(
-                        title = "Zvočni efekti",
-                        subtitle = "Zvoki pri uspešnih akcijah",
-                        checked = settings.soundEffects,
-                        onCheckedChange = { settings.setSoundEffectsEnabled(it) },
+                        title = "Samodejno štetje točk",
+                        subtitle = "Izračuna točke kontrakta po hišnih pravilih",
+                        checked = settings.autoScoring,
+                        onCheckedChange = { settings.setAutoScoringEnabled(it) },
                     )
-                    HorizontalDivider()
-                    // Obvezni klop
-                    SettingsToggleRow(
-                        title = "Obvezni klop",
-                        subtitle = "Po določenih pogojih zahteva klop ali solo brez",
-                        checked = settings.obvezniKlopEnabled,
-                        onCheckedChange = { settings.setObvezniKlop(it) },
-                    )
-                    if (settings.obvezniKlopEnabled) {
-                        SettingsSubToggleRow(
-                            title = "Ko ima igralec_ka okrogle točke",
-                            checked = settings.obvezniKlopOnRoundScore,
-                            onCheckedChange = { settings.setObvezniKlopRoundScore(it) },
-                        )
-                        if (settings.obvezniKlopOnRoundScore) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.padding(start = 16.dp),
-                            ) {
-                                Text(
-                                    "Korak:",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                listOf(100, 500, 1000).forEach { step ->
-                                    val selected = settings.obvezniKlopStep == step
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(androidx.compose.foundation.shape.CircleShape)
-                                            .background(
-                                                if (selected) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.surfaceVariant
-                                            )
-                                            .clickable { settings.updateObvezniKlopStep(step) }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                                    ) {
-                                        Text(
-                                            "$step",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (selected) Color.White
-                                            else MaterialTheme.colorScheme.onSurface,
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        SettingsSubToggleRow(
-                            title = "Ko je izid igre enak 0",
-                            checked = settings.obvezniKlopOnZeroOutcome,
-                            onCheckedChange = { settings.setObvezniKlopZeroOutcome(it) },
-                        )
-                    }
                     HorizontalDivider()
                     SettingsToggleRow(
                         title = "Samodejni radlci",
-                        subtitle = "Radlci se vodijo samodejno — brez ročnega vklapljanja s pritiskom",
+                        subtitle = "Radlci se dodajajo in prečrtajo sami; ročno urejanje je izklopljeno",
                         checked = settings.autoRadlci,
                         onCheckedChange = { settings.updateAutoRadlci(it) },
                     )
                     HorizontalDivider()
                     SettingsToggleRow(
-                        title = "Radlc podvoji pagat ultimo",
-                        subtitle = "Ko je izklopljeno, radlci ne podvojijo pagat ultimo nagrade",
-                        checked = settings.currentRuleSet.generalRules.radlcDoublesPagat,
-                        onCheckedChange = {
-                            settings.updateCurrentRuleSet(
-                                settings.currentRuleSet.copy(
-                                    generalRules = settings.currentRuleSet.generalRules.copy(radlcDoublesPagat = it)
-                                )
-                            )
-                        },
+                        title = "Zvočni efekti",
+                        subtitle = "Zvok ob dobljeni igri",
+                        checked = settings.soundEffects,
+                        onCheckedChange = { settings.setSoundEffectsEnabled(it) },
                     )
                     HorizontalDivider()
-                    SettingsToggleRow(
-                        title = "Radlc podvoji klop",
-                        subtitle = "Neuporabljen radlc podvoji klop rezultat (prazen klop ga porabi)",
-                        checked = settings.currentRuleSet.generalRules.radlcDoublesKlop,
-                        onCheckedChange = {
-                            settings.updateCurrentRuleSet(
-                                settings.currentRuleSet.copy(
-                                    generalRules = settings.currentRuleSet.generalRules.copy(radlcDoublesKlop = it)
-                                )
-                            )
-                        },
-                    )
-                    HorizontalDivider()
-                    SettingsToggleRow(
-                        title = "Radlci za soigralce",
-                        subtitle = "Podvojitev točk z radlci samo za glavne igralce, ne za soigralce",
-                        checked = settings.currentRuleSet.generalRules.radlcDoublingDeclarerOnly,
-                        onCheckedChange = {
-                            settings.updateCurrentRuleSet(
-                                settings.currentRuleSet.copy(
-                                    generalRules = settings.currentRuleSet.generalRules.copy(radlcDoublingDeclarerOnly = it)
-                                )
-                            )
-                        },
-                    )
-                    HorizontalDivider()
-                    SettingsToggleRow(
-                        title = "Valat s točkami igre",
-                        subtitle = "Pri valatu se prištejejo tudi točke osnovne igre",
-                        checked = settings.currentRuleSet.generalRules.valatWithGamePoints,
-                        onCheckedChange = {
-                            settings.updateCurrentRuleSet(
-                                settings.currentRuleSet.copy(
-                                    generalRules = settings.currentRuleSet.generalRules.copy(valatWithGamePoints = it)
-                                )
-                            )
-                        },
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Kompaktne kartice", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                        Text(
+                            "Vodilni_a čez celo širino, ostali po dva v vrsti. Samodejno: od " +
+                                "${CompactCardsMode.AUTO_FROM_PLAYERS} igralcev naprej.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            CompactCardsMode.entries.forEachIndexed { index, mode ->
+                                SegmentedButton(
+                                    selected = settings.compactCards == mode,
+                                    onClick = { settings.updateCompactCards(mode) },
+                                    shape = SegmentedButtonDefaults.itemShape(index, CompactCardsMode.entries.size),
+                                    colors = stihSegmentColors(),
+                                    icon = {},
+                                ) { Text(mode.label) }
+                            }
+                        }
+                    }
                 }
-            }
-
-            // Auto scoring
-            SettingsSection(title = "Samodejno štetje", icon = Icons.Filled.Functions, iconColor = Color(0xFF007AFF)) {
-                SettingsToggleRow(
-                    title = "Samodejno štetje točk",
-                    subtitle = "Avtomatsko izračuna točke za kontrakte",
-                    checked = settings.autoScoring,
-                    onCheckedChange = { settings.setAutoScoringEnabled(it) },
-                )
             }
 
             // Data
@@ -405,6 +325,31 @@ fun SettingsScreen(
         }
     }
 
+    if (showApplyToRunningGame) {
+        AlertDialog(
+            onDismissRequest = { showApplyToRunningGame = false },
+            title = { Text("Uporabim pravila za nedokončano igro?") },
+            text = {
+                Text(
+                    "Nedokončana igra bo naprej štela po »${settings.currentRuleSet.name}«. Pravila za radlce " +
+                        "in klop veljajo za vse odigrane runde, točke že vpisanih iger pa ostanejo, kot so bile.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showApplyToRunningGame = false
+                    // Re-scored when the game opens again
+                    sessionManager.activeSession?.let {
+                        sessionManager.updateActiveSession(it.copy(rules = settings.currentRuleSet))
+                    }
+                }) { Text("Uporabi") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showApplyToRunningGame = false }) { Text("Prekliči") }
+            },
+        )
+    }
+
     clearError?.let { message ->
         AlertDialog(
             onDismissRequest = { clearError = null },
@@ -442,6 +387,130 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * An unfinished game keeps the rules it started with. When they differ from the ones selected
+ * here, say so and offer to switch the game over.
+ */
+@Composable
+private fun RunningGameNote(session: GameSession?, selected: CustomScoringRules, onApply: () -> Unit) {
+    val gameRules = session?.takeIf { it.games.isNotEmpty() }?.rules ?: return
+    if (gameRules == selected) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                Icons.Outlined.Info, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp),
+            )
+            Text(
+                "Nedokončana igra šteje po pravilih »${gameRules.name}«, kot so bila ob njenem začetku. " +
+                    "Spremembe tukaj veljajo za nove igre.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "Uporabi tudi za nedokončano igro",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clickable(onClick = onApply).padding(vertical = 4.dp),
+        )
+    }
+}
+
+/** What [rules] do differently from Standard: points, then the table's switches */
+private fun rulesDifferences(rules: CustomScoringRules): List<String> {
+    val defaults = CustomScoringRules.defaultContractScores
+    val defaultBonus = BonusScoreConfig()
+    val lines = mutableListOf<String>()
+    val contracts = listOf(
+        TarokContract.TRI to "Tri", TarokContract.DVE to "Dve", TarokContract.ENA to "Ena",
+        TarokContract.SOLO_TRI to "Solo tri", TarokContract.SOLO_DVE to "Solo dve", TarokContract.SOLO_ENA to "Solo ena",
+        TarokContract.SOLO_BREZ to "Solo brez", TarokContract.BERAC to "Berač", TarokContract.ODPRTI_BERAC to "Odprti berač",
+        TarokContract.BARVNI_VALAT to "Barvni valat",
+    )
+    for ((contract, name) in contracts) {
+        val current = rules.contractScores[contract.rawValue]
+        val standard = defaults[contract.rawValue]
+        val cur3 = current?.threePlayerScore ?: 0
+        val cur4 = current?.fourPlusPlayerScore ?: 0
+        if (cur3 != (standard?.threePlayerScore ?: 0) || cur4 != (standard?.fourPlusPlayerScore ?: 0)) {
+            lines += "$name: $cur3 / $cur4 točk"
+        }
+    }
+    val bonus = rules.bonusScores
+    if (bonus.tihiValat != defaultBonus.tihiValat) lines += "Tihi valat: ${bonus.tihiValat} točk"
+    if (bonus.napovedanValat != defaultBonus.napovedanValat) lines += "Napovedan valat: ${bonus.napovedanValat} točk"
+    if (bonus.trulaBase != defaultBonus.trulaBase) lines += "Trula: ${bonus.trulaBase} / ${bonus.trulaAnnounced} točk"
+    if (bonus.pagatUltimoBase != defaultBonus.pagatUltimoBase) {
+        lines += "Pagat ultimo: ${bonus.pagatUltimoBase} / ${bonus.pagatUltimoAnnounced} točk"
+    }
+
+    // The switches in Uredi → Osnovno, so the table's rules show without opening it
+    val g = rules.generalRules
+    val standard = GeneralRulesConfig()
+    if (!g.radlcDoublesPartner) lines += "Radlc podvoji samo glavnega igralca_ko"
+    if (!g.radlcDoublesPagat) lines += "Radlc ne podvoji pagat ultimo"
+    if (!g.radlcPenaltyEnabled) {
+        lines += "Brez kazni za neuporabljene radlce"
+    } else if (g.radlcPenaltyPerUnused != standard.radlcPenaltyPerUnused) {
+        lines += "Kazen na radlc: ${g.radlcPenaltyPerUnused} točk"
+    }
+    if (!g.radlcDoublesKlop) {
+        lines += "Radlc ne podvoji klopa"
+    } else if (g.radlcSkipsPrazenKlop) {
+        lines += "Na prazen klop ne vpliva radlc"
+    }
+    if (g.obvezniKlopEnabled) {
+        val whenText = buildList {
+            if (g.obvezniKlopOnRoundScore) add("okrogle točke (${g.klopStep})")
+            if (g.obvezniKlopOnZeroOutcome) add("izid 0")
+        }
+        lines += if (whenText.isEmpty()) "Obvezni klop" else "Obvezni klop: " + whenText.joinToString(", ")
+    }
+    if (g.valatWithGamePoints) lines += "Valat s točkami igre"
+    if (g.renonsPenalty != standard.renonsPenalty) lines += "Kazen za renons: ${g.renonsPenalty} točk"
+    return lines
+}
+
+/** Every game of every saved session; every field quoted, quotes doubled */
+private fun allSessionsCsv(sessions: List<GameSession>): String {
+    val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+    fun q(value: String) = "\"" + value.replace("\"", "\"\"") + "\""
+    val lines = mutableListOf("Datum,Čas,Igralci,Kontrakt,Glavni igralec,Partner,Rezultat,Točke,Točke partnerja,Bonusi")
+    for (session in sessions) {
+        val sessionDate = dateFormatter.format(Date(session.startTime))
+        val players = session.playerNames.joinToString(";")
+        for (game in session.games) {
+            // Can differ from the declarer's when the radlc doubles only the declarer
+            val partnerPoints = game.actualPartner?.let { "${game.pointsFor(it)}" } ?: ""
+            val row = listOf(
+                sessionDate,
+                timeFormatter.format(Date(game.timestamp)),
+                players,
+                game.contract.rawValue,
+                game.declarerName,
+                game.partnerName ?: "",
+                game.outcome.rawValue,
+                "${game.totalPoints}",
+                partnerPoints,
+                game.bonuses.joinToString(";") { it.type.rawValue },
+            )
+            lines += row.joinToString(",") { q(it) }
+        }
+    }
+    return lines.joinToString("\n")
+}
+
+/** Segmented picker in the app's blue instead of the default purple */
+@Composable
+fun stihSegmentColors() = SegmentedButtonDefaults.colors(
+    activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+    activeContentColor = MaterialTheme.colorScheme.primary,
+    activeBorderColor = MaterialTheme.colorScheme.outline,
+)
+
 @Composable
 fun SettingsSection(
     title: String,
@@ -476,26 +545,6 @@ fun SettingsToggleRow(
             Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Composable
-private fun SettingsSubToggleRow(
-    title: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(start = 16.dp),
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

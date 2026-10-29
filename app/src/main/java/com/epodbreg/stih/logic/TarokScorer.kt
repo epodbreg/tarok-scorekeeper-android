@@ -62,12 +62,14 @@ object TarokScorer {
 
         // Radlc logic: double with an existing radlc before granting new ones.
         // Any non-penalty game can be doubled — givesRadlc only controls granting.
+        var doubled = false
         val decIdx = mutablePlayers.indexOfFirst { it.name == baseEntry.declarerName }
         if (decIdx >= 0) {
             val declarer = mutablePlayers[decIdx]
             val radlcIdx = declarer.radlci.indexOfFirst { !it }
             if (declarer.radlci.isNotEmpty() && radlcIdx >= 0) {
                 finalPoints = baseEntry.totalPoints * 2
+                doubled = true
                 // Only consume the radlc on a win
                 if (baseEntry.outcome == HandOutcome.ZMAGAL || baseEntry.outcome == HandOutcome.ZMAGAL_SLEPAL) {
                     val updated = declarer.radlci.toMutableList().also { it[radlcIdx] = true }
@@ -75,6 +77,11 @@ object TarokScorer {
                 }
             }
         }
+
+        // The declarer's radlc doubles the partner too — unless the table plays it for the declarer only
+        val partnerPoints = if (doubled && !rules.radlcDoublesPartner && baseEntry.actualPartner != null) {
+            baseEntry.totalPoints
+        } else null
 
         // Grant new radlci after scoring
         if (givesRadlc) {
@@ -95,6 +102,7 @@ object TarokScorer {
             totalPoints = finalPoints,
             klopScores = null,
             rawTotalPoints = baseEntry.totalPoints,
+            partnerPoints = partnerPoints,
         )
         return Result(entry, mutablePlayers)
     }
@@ -110,18 +118,21 @@ object TarokScorer {
         val mutablePlayers = players.toMutableList()
         val finalScores = mutableMapOf<String, Int>()
 
-        // Score first, using existing (old) radlci. "Klop brez radlca":
-        // when radlcDoublesKlop is off, radlci neither double nor get consumed.
+        // Score first, using existing (old) radlci. When radlcDoublesKlop is off, radlci
+        // neither double nor get used; radlcSkipsPrazenKlop leaves only the prazen alone.
         for (idx in mutablePlayers.indices) {
             val player = mutablePlayers[idx]
             val rawScore = rawKlopScores[player.name] ?: 0
             var adjustedScore = rawScore
 
+            val isPrazen = rawScore == 70
             val radlcIdx = player.radlci.indexOfFirst { !it }
-            if (rules.radlcDoublesKlop && rawScore != 0 && player.radlci.isNotEmpty() && radlcIdx >= 0) {
+            if (rules.radlcDoublesKlop && rawScore != 0 && !(isPrazen && rules.radlcSkipsPrazenKlop) &&
+                player.radlci.isNotEmpty() && radlcIdx >= 0
+            ) {
                 adjustedScore = rawScore * 2
-                // Only cancel the radlc on a win (prazen klop)
-                if (rawScore == 70) {
+                // A prazen klop (the win) uses the radlc up
+                if (isPrazen) {
                     val updated = player.radlci.toMutableList().also { it[radlcIdx] = true }
                     mutablePlayers[idx] = player.copy(radlci = updated)
                 }

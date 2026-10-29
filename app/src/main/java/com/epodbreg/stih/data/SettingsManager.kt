@@ -6,154 +6,216 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.epodbreg.stih.model.BonusType
+import com.epodbreg.stih.model.CompactCardsMode
 import com.epodbreg.stih.model.CustomScoringRules
+import com.epodbreg.stih.model.GeneralRulesConfig
 import com.epodbreg.stih.model.HandBonus
 import com.epodbreg.stih.model.HandOutcome
 import com.epodbreg.stih.model.TarokContract
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/**
- * App settings + house-rule scoring. Port of SettingsManager.swift,
- * backed by SharedPreferences instead of UserDefaults.
- */
-class SettingsManager(context: Context) {
+/** Where settings live: SharedPreferences in the app, a plain map in tests */
+interface SettingsStore {
+    fun contains(key: String): Boolean
+    fun getBoolean(key: String, default: Boolean): Boolean
+    fun getInt(key: String, default: Int): Int
+    fun getString(key: String): String?
+    fun putBoolean(key: String, value: Boolean)
+    fun putInt(key: String, value: Int)
+    fun putString(key: String, value: String)
+}
 
-    private val prefs: SharedPreferences =
-        context.getSharedPreferences("stih_settings", Context.MODE_PRIVATE)
+class SharedPrefsStore(private val prefs: SharedPreferences) : SettingsStore {
+    override fun contains(key: String) = prefs.contains(key)
+    override fun getBoolean(key: String, default: Boolean) = prefs.getBoolean(key, default)
+    override fun getInt(key: String, default: Int) = prefs.getInt(key, default)
+    override fun getString(key: String): String? = prefs.getString(key, null)
+    override fun putBoolean(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
+    override fun putInt(key: String, value: Int) = prefs.edit().putInt(key, value).apply()
+    override fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
+}
+
+/**
+ * App settings + house-rule scoring. Port of SettingsManager.swift.
+ *
+ * Since 1.9 everything that depends on the table (radlci, klop, obvezni klop, renons …) lives in
+ * the rule set. [currentRuleSet] is the selected set, which Settings edits; [rules] is what
+ * scoring reads: the open game's own copy ([playingRules]) if there is one.
+ */
+class SettingsManager(private val store: SettingsStore) {
+
+    constructor(context: Context) : this(
+        SharedPrefsStore(context.getSharedPreferences("stih_settings", Context.MODE_PRIVATE))
+    )
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    var autoScoring: Boolean by mutableStateOf(prefs.getBoolean("autoScoring", true))
+    var autoScoring: Boolean by mutableStateOf(store.getBoolean("autoScoring", true))
         private set
-    var houseScoringRules: String by mutableStateOf(prefs.getString("houseScoringRules", "Standard") ?: "Standard")
+    var houseScoringRules: String by mutableStateOf(store.getString("houseScoringRules") ?: STANDARD)
         private set
-    var showAnimations: Boolean by mutableStateOf(prefs.getBoolean("showAnimations", true))
+    /** Kept for backups (both apps write it); nothing reads it */
+    var showAnimations: Boolean by mutableStateOf(store.getBoolean("showAnimations", true))
         private set
-    var soundEffects: Boolean by mutableStateOf(prefs.getBoolean("soundEffects", false))
-        private set
-    var obvezniKlopEnabled: Boolean by mutableStateOf(prefs.getBoolean("obvezniKlopEnabled", false))
-        private set
-
-    /** Fire when any player's live net score hits a non-negative multiple of 100 */
-    var obvezniKlopOnRoundScore: Boolean by mutableStateOf(prefs.getBoolean("obvezniKlopOnRoundScore", true))
-        private set
-
-    /** Fire when the scored game itself totals exactly 0 points */
-    var obvezniKlopOnZeroOutcome: Boolean by mutableStateOf(prefs.getBoolean("obvezniKlopOnZeroOutcome", true))
-        private set
-
-    /** Round-score trigger step: fire when a live net score hits a non-negative multiple of this. */
-    var obvezniKlopStep: Int by mutableStateOf(prefs.getInt("obvezniKlopStep", 100))
+    var soundEffects: Boolean by mutableStateOf(store.getBoolean("soundEffects", false))
         private set
 
     /** When on, radlc pips are read-only status — no manual tap-to-toggle. */
-    var autoRadlci: Boolean by mutableStateOf(prefs.getBoolean("autoRadlci", true))
+    var autoRadlci: Boolean by mutableStateOf(store.getBoolean("autoRadlci", true))
+        private set
+
+    /** Game screen: leader full width, the others as half cards two per row */
+    var compactCards: CompactCardsMode by mutableStateOf(
+        CompactCardsMode.fromRaw(store.getString("compactCards")) ?: CompactCardsMode.AUTO
+    )
         private set
 
     /** The player whose statistics the stats screen shows; remembered across launches. */
-    var myPlayerName: String by mutableStateOf(prefs.getString("myPlayerName", "") ?: "")
+    var myPlayerName: String by mutableStateOf(store.getString("myPlayerName") ?: "")
         private set
-
-    fun updateMyPlayerName(value: String) {
-        myPlayerName = value
-        prefs.edit().putString("myPlayerName", value).apply()
-    }
 
     var customRules: List<CustomScoringRules> by mutableStateOf(loadCustomRules())
         private set
     var currentRuleSet: CustomScoringRules by mutableStateOf(CustomScoringRules.standard())
         private set
 
+    /** The open game's own rules (see GameSession.rules); null when no game is in progress. */
+    var playingRules: CustomScoringRules? by mutableStateOf(null)
+
+    /** What scoring reads: the game's own rules, else the selected set. */
+    val rules: CustomScoringRules get() = playingRules ?: currentRuleSet
+
     private val predefinedRules: Map<String, CustomScoringRules> =
-        mapOf("Standard" to CustomScoringRules.standard())
+        mapOf(STANDARD to CustomScoringRules.standard())
 
     init {
         reloadCurrentRuleSet()
+        migrateObvezniKlopIntoRules()
     }
 
     // ---- Setters -----------------------------------------------------------
 
     fun setAutoScoringEnabled(value: Boolean) {
         autoScoring = value
-        prefs.edit().putBoolean("autoScoring", value).apply()
+        store.putBoolean("autoScoring", value)
     }
 
     fun setHouseRules(name: String) {
         houseScoringRules = name
-        prefs.edit().putString("houseScoringRules", name).apply()
+        store.putString("houseScoringRules", name)
         reloadCurrentRuleSet()
     }
 
     fun setShowAnimationsEnabled(value: Boolean) {
         showAnimations = value
-        prefs.edit().putBoolean("showAnimations", value).apply()
+        store.putBoolean("showAnimations", value)
     }
 
     fun setSoundEffectsEnabled(value: Boolean) {
         soundEffects = value
-        prefs.edit().putBoolean("soundEffects", value).apply()
-    }
-
-    fun setObvezniKlop(value: Boolean) {
-        obvezniKlopEnabled = value
-        prefs.edit().putBoolean("obvezniKlopEnabled", value).apply()
-    }
-
-    fun setObvezniKlopRoundScore(value: Boolean) {
-        obvezniKlopOnRoundScore = value
-        prefs.edit().putBoolean("obvezniKlopOnRoundScore", value).apply()
-    }
-
-    fun setObvezniKlopZeroOutcome(value: Boolean) {
-        obvezniKlopOnZeroOutcome = value
-        prefs.edit().putBoolean("obvezniKlopOnZeroOutcome", value).apply()
-    }
-
-    fun updateObvezniKlopStep(value: Int) {
-        obvezniKlopStep = value
-        prefs.edit().putInt("obvezniKlopStep", value).apply()
+        store.putBoolean("soundEffects", value)
     }
 
     fun updateAutoRadlci(value: Boolean) {
         autoRadlci = value
-        prefs.edit().putBoolean("autoRadlci", value).apply()
+        store.putBoolean("autoRadlci", value)
+    }
+
+    fun updateCompactCards(value: CompactCardsMode) {
+        compactCards = value
+        store.putString("compactCards", value.rawValue)
+    }
+
+    fun updateMyPlayerName(value: String) {
+        myPlayerName = value
+        store.putString("myPlayerName", value)
     }
 
     /**
-     * Update the active rule set in place (e.g. toggles bound to generalRules).
-     * Always persisted as an override so quick-toggles survive relaunch even
-     * for the predefined "Standard" rule set.
+     * Changes the selected rule set (the switches edited in Pravila). It's saved as the override,
+     * Standard keeps its own copy (so switching sets and back doesn't reset it), and the custom
+     * set of the same name stays in step, so the editor and backups see what the game sees.
      */
     fun updateCurrentRuleSet(rules: CustomScoringRules) {
         currentRuleSet = rules
-        saveCurrentRuleSetOverride()
-        if (houseScoringRules != "Standard") {
-            val idx = customRules.indexOfFirst { it.name == rules.name }
-            if (idx >= 0) {
-                customRules = customRules.toMutableList().also { it[idx] = rules }
-                saveCustomRules()
-            }
+        val encoded = json.encodeToString(rules)
+        store.putString(KEY_OVERRIDE, encoded)
+        if (rules.name in predefinedRules) store.putString(KEY_STANDARD_SWITCHES, encoded)
+        val index = customRules.indexOfFirst { it.name == rules.name }
+        if (index >= 0 && customRules[index] != rules) {
+            customRules = customRules.toMutableList().also { it[index] = rules }
+            saveCustomRules()
         }
     }
 
-    private fun saveCurrentRuleSetOverride() {
-        prefs.edit().putString("currentRuleSetOverride", json.encodeToString(currentRuleSet)).apply()
+    /** Shortcut for editing one switch of the selected set */
+    fun updateGeneralRules(change: (GeneralRulesConfig) -> GeneralRulesConfig) {
+        updateCurrentRuleSet(currentRuleSet.copy(generalRules = change(currentRuleSet.generalRules)))
     }
 
-    private fun loadCurrentRuleSetOverride(): CustomScoringRules? {
-        val raw = prefs.getString("currentRuleSetOverride", null) ?: return null
-        return try {
-            json.decodeFromString<CustomScoringRules>(raw)
+    private fun loadOverride(): CustomScoringRules? = decodeRules(store.getString(KEY_OVERRIDE))
+
+    private fun storedStandardRules(): CustomScoringRules? = decodeRules(store.getString(KEY_STANDARD_SWITCHES))
+
+    private fun decodeRules(raw: String?): CustomScoringRules? = raw?.let {
+        try {
+            json.decodeFromString<CustomScoringRules>(it)
         } catch (_: Exception) {
             null
         }
     }
 
+    private fun reloadCurrentRuleSet() {
+        // Prefer the saved override while it still belongs to the selected rule set;
+        // switching sets loads the base and re-saves it as the override.
+        val override = loadOverride()
+        val next = when {
+            override != null && override.name == houseScoringRules -> override
+            houseScoringRules in predefinedRules ->
+                storedStandardRules() ?: predefinedRules.getValue(houseScoringRules)
+            else -> customRules.firstOrNull { it.name == houseScoringRules } ?: CustomScoringRules.standard()
+        }
+        updateCurrentRuleSet(next)
+    }
+
+    /**
+     * Until 1.9 obvezni klop was one setting for the whole app. Copy whatever was set into every
+     * rule set (Standard included) once, so nobody's table changes behaviour after the update.
+     */
+    private fun migrateObvezniKlopIntoRules() {
+        if (store.getBoolean(KEY_OBVEZNI_MIGRATED, false)) return
+
+        fun copyOldValues(rules: GeneralRulesConfig): GeneralRulesConfig {
+            var result = rules
+            if (store.contains("obvezniKlopEnabled")) {
+                result = result.copy(obvezniKlopEnabled = store.getBoolean("obvezniKlopEnabled", false))
+            }
+            if (store.contains("obvezniKlopOnRoundScore")) {
+                result = result.copy(obvezniKlopOnRoundScore = store.getBoolean("obvezniKlopOnRoundScore", true))
+            }
+            if (store.contains("obvezniKlopOnZeroOutcome")) {
+                result = result.copy(obvezniKlopOnZeroOutcome = store.getBoolean("obvezniKlopOnZeroOutcome", true))
+            }
+            val step = store.getInt("obvezniKlopStep", 0)
+            if (step > 0) result = result.copy(obvezniKlopStep = step)
+            return result
+        }
+
+        val standard = storedStandardRules() ?: CustomScoringRules.standard()
+        store.putString(
+            KEY_STANDARD_SWITCHES,
+            json.encodeToString(standard.copy(generalRules = copyOldValues(standard.generalRules))),
+        )
+        replaceCustomRules(customRules.map { it.copy(generalRules = copyOldValues(it.generalRules)) })
+        updateGeneralRules(::copyOldValues)
+        store.putBoolean(KEY_OBVEZNI_MIGRATED, true)
+    }
+
     // ---- Custom rules management -------------------------------------------
 
     private fun loadCustomRules(): List<CustomScoringRules> {
-        val raw = prefs.getString("customScoringRules", null) ?: return emptyList()
+        val raw = store.getString("customScoringRules") ?: return emptyList()
         return try {
             json.decodeFromString(raw)
         } catch (_: Exception) {
@@ -162,89 +224,127 @@ class SettingsManager(context: Context) {
     }
 
     private fun saveCustomRules() {
-        prefs.edit().putString("customScoringRules", json.encodeToString(customRules)).apply()
+        store.putString("customScoringRules", json.encodeToString(customRules))
     }
 
-    private fun reloadCurrentRuleSet() {
-        // Prefer the saved override while it still belongs to the selected rule
-        // set; switching rule sets loads the base and re-saves it as the override.
-        val override = loadCurrentRuleSetOverride()
-        currentRuleSet = if (override != null && override.name == houseScoringRules) {
-            override
-        } else {
-            val base = predefinedRules[houseScoringRules]
-                ?: customRules.firstOrNull { it.name == houseScoringRules }
-                ?: CustomScoringRules.standard()
-            base.also { currentRuleSet = it; saveCurrentRuleSetOverride() }
-        }
-    }
-
-    fun addOrUpdateCustomRuleSet(rules: CustomScoringRules, originalName: String? = null) {
-        val list = customRules.toMutableList()
-        val idx = list.indexOfFirst { it.name == (originalName ?: rules.name) }
-        if (idx >= 0) list[idx] = rules else list.add(rules)
-        customRules = list
+    /** Replaces the saved custom rule sets (the selected one isn't reloaded) */
+    fun replaceCustomRules(rules: List<CustomScoringRules>) {
+        customRules = rules
         saveCustomRules()
-        setHouseRules(rules.name)
-    }
-
-    fun deleteCustomRuleSet(name: String) {
-        customRules = customRules.filterNot { it.name == name }
-        saveCustomRules()
-        if (houseScoringRules == name) setHouseRules("Standard")
-    }
-
-    // ---- Backup ---------------------------------------------------------------
-
-    /** Current settings for a backup file (same keys as the iOS app). */
-    fun toBackupSettings() = BackupSettings(
-        autoScoring = autoScoring,
-        houseScoringRules = houseScoringRules,
-        showAnimations = showAnimations,
-        soundEffects = soundEffects,
-        obvezniKlopEnabled = obvezniKlopEnabled,
-        obvezniKlopOnRoundScore = obvezniKlopOnRoundScore,
-        obvezniKlopOnZeroOutcome = obvezniKlopOnZeroOutcome,
-        obvezniKlopStep = obvezniKlopStep,
-        autoRadlci = autoRadlci,
-        myPlayerName = myPlayerName.ifEmpty { null },
-        customRules = customRules,
-        currentRuleSet = currentRuleSet,
-    )
-
-    /**
-     * Restores settings from a backup. Custom rule sets merge by name (the backup's version
-     * wins; ones only on this phone stay). The house rules switch only to a rule set that
-     * exists, and the active set (with its quick toggles) only if its name matches.
-     */
-    fun applyBackup(backup: BackupSettings) {
-        backup.autoScoring?.let(::setAutoScoringEnabled)
-        backup.showAnimations?.let(::setShowAnimationsEnabled)
-        backup.soundEffects?.let(::setSoundEffectsEnabled)
-        backup.obvezniKlopEnabled?.let(::setObvezniKlop)
-        backup.obvezniKlopOnRoundScore?.let(::setObvezniKlopRoundScore)
-        backup.obvezniKlopOnZeroOutcome?.let(::setObvezniKlopZeroOutcome)
-        backup.obvezniKlopStep?.takeIf { it > 0 }?.let(::updateObvezniKlopStep)
-        backup.autoRadlci?.let(::updateAutoRadlci)
-        backup.customRules?.takeIf { it.isNotEmpty() }?.let { incoming ->
-            val names = incoming.map { it.name }.toSet()
-            customRules = customRules.filterNot { it.name in names } + incoming
-            saveCustomRules()
-        }
-        backup.houseScoringRules?.takeIf { it in getAllRuleSetNames() }?.let { house ->
-            setHouseRules(house)
-            backup.currentRuleSet?.takeIf { it.name == house }?.let(::updateCurrentRuleSet)
-        }
-        backup.myPlayerName?.takeIf { it.isNotEmpty() }?.let(::updateMyPlayerName)
     }
 
     fun getAllRuleSetNames(): List<String> =
         predefinedRules.keys.sorted() + customRules.map { it.name }
 
-    // ---- Scoring helpers (port of SettingsManager.swift) --------------------
+    /** [base], or "base 2", "base 3" … — whichever isn't taken yet */
+    fun uniqueRuleSetName(base: String): String {
+        val trimmed = base.trim()
+        val taken = getAllRuleSetNames().toSet()
+        if (trimmed !in taken) return trimmed
+        var number = 2
+        while ("$trimmed $number" in taken) number++
+        return "$trimmed $number"
+    }
+
+    /** Whether [name] is a built-in set (Standard): its points are fixed, only its switches change */
+    fun isPredefined(name: String): Boolean = name in predefinedRules && customRules.none { it.name == name }
+
+    /**
+     * Saves what the rules editor returns. [original] is the set it was opened with: Standard
+     * (switches only), a saved custom set (kept selected if it was, also after a rename), or a
+     * new one (added under a free name and selected).
+     */
+    fun saveEditedRules(original: CustomScoringRules, updated: CustomScoringRules) {
+        val savedIndex = customRules.indexOfFirst { it.name == original.name }
+        when {
+            savedIndex < 0 && original.name in predefinedRules -> updateCurrentRuleSet(updated)
+            savedIndex >= 0 -> {
+                val wasActive = houseScoringRules == original.name
+                // Renamed onto another set's name → number it instead of clashing
+                val renamed = if (updated.name.trim() != original.name) {
+                    updated.copy(name = uniqueRuleSetName(updated.name))
+                } else updated.copy(name = original.name)
+                replaceCustomRules(customRules.toMutableList().also { it[savedIndex] = renamed })
+                if (wasActive) {
+                    houseScoringRules = renamed.name
+                    store.putString("houseScoringRules", renamed.name)
+                    updateCurrentRuleSet(renamed)
+                }
+            }
+            else -> {
+                val added = updated.copy(name = uniqueRuleSetName(updated.name))
+                replaceCustomRules(customRules + added)
+                setHouseRules(added.name)
+            }
+        }
+    }
+
+    fun deleteCustomRuleSet(name: String) {
+        replaceCustomRules(customRules.filterNot { it.name == name })
+        if (houseScoringRules == name) setHouseRules(STANDARD)
+    }
+
+    // ---- Backup ---------------------------------------------------------------
+
+    /** Current settings for a backup file (same keys as the iOS app). */
+    fun toBackupSettings(): BackupSettings {
+        // Also inside currentRuleSet since 1.9; kept at the top for older apps
+        val general = currentRuleSet.generalRules
+        return BackupSettings(
+            autoScoring = autoScoring,
+            houseScoringRules = houseScoringRules,
+            showAnimations = showAnimations,
+            soundEffects = soundEffects,
+            obvezniKlopEnabled = general.obvezniKlopEnabled,
+            obvezniKlopOnRoundScore = general.obvezniKlopOnRoundScore,
+            obvezniKlopOnZeroOutcome = general.obvezniKlopOnZeroOutcome,
+            obvezniKlopStep = general.klopStep,
+            autoRadlci = autoRadlci,
+            compactCards = compactCards.rawValue,
+            myPlayerName = myPlayerName.ifEmpty { null },
+            customRules = customRules,
+            currentRuleSet = currentRuleSet,
+        )
+    }
+
+    /**
+     * Restores settings from a backup. Custom rule sets merge by name (the backup's version
+     * wins; ones only on this phone stay). The house rules switch only to a rule set that
+     * exists, and the active set (with its switches) only if its name matches.
+     */
+    fun applyBackup(backup: BackupSettings) {
+        backup.autoScoring?.let(::setAutoScoringEnabled)
+        backup.showAnimations?.let(::setShowAnimationsEnabled)
+        backup.soundEffects?.let(::setSoundEffectsEnabled)
+        backup.autoRadlci?.let(::updateAutoRadlci)
+        CompactCardsMode.fromRaw(backup.compactCards)?.let(::updateCompactCards)
+        backup.customRules?.takeIf { it.isNotEmpty() }?.let { incoming ->
+            val names = incoming.map { it.name }.toSet()
+            replaceCustomRules(customRules.filterNot { it.name in names } + incoming)
+            // The selected set was replaced: load the backup's version now, before anything
+            // saves the phone's old copy back over it
+            incoming.firstOrNull { it.name == houseScoringRules }?.let(::updateCurrentRuleSet)
+        }
+        backup.houseScoringRules?.takeIf { it in getAllRuleSetNames() }?.let { house ->
+            setHouseRules(house)
+            backup.currentRuleSet?.takeIf { it.name == house }?.let(::updateCurrentRuleSet)
+        }
+        // The top-level obvezni klop keys (written by every version) win
+        updateGeneralRules { general ->
+            var result = general
+            backup.obvezniKlopEnabled?.let { result = result.copy(obvezniKlopEnabled = it) }
+            backup.obvezniKlopOnRoundScore?.let { result = result.copy(obvezniKlopOnRoundScore = it) }
+            backup.obvezniKlopOnZeroOutcome?.let { result = result.copy(obvezniKlopOnZeroOutcome = it) }
+            backup.obvezniKlopStep?.takeIf { it > 0 }?.let { result = result.copy(obvezniKlopStep = it) }
+            result
+        }
+        backup.myPlayerName?.takeIf { it.isNotEmpty() }?.let(::updateMyPlayerName)
+    }
+
+    // ---- Scoring helpers (port of SettingsManager.swift) — all read [rules] -----
 
     fun contractUsesRazlika(contract: TarokContract, playerCount: Int): Boolean {
-        val config = currentRuleSet.contractScores[contract.rawValue]
+        val config = rules.contractScores[contract.rawValue]
             ?: return if (playerCount == 3) {
                 contract in setOf(TarokContract.TRI, TarokContract.DVE, TarokContract.ENA, TarokContract.SOLO_BREZ)
             } else {
@@ -265,14 +365,13 @@ class SettingsManager(context: Context) {
         )
 
     fun contractIsValatWithGamePoints(contract: TarokContract): Boolean =
-        contract == TarokContract.VALAT && currentRuleSet.generalRules.valatWithGamePoints
-
+        contract == TarokContract.VALAT && rules.generalRules.valatWithGamePoints
 
     fun getValatBaseScore(isAnnounced: Boolean): Int =
-        if (isAnnounced) currentRuleSet.bonusScores.napovedanValat else currentRuleSet.bonusScores.tihiValat
+        if (isAnnounced) rules.bonusScores.napovedanValat else rules.bonusScores.tihiValat
 
     fun getContractBaseScore(contract: TarokContract, playerCount: Int): Int {
-        val config = currentRuleSet.contractScores[contract.rawValue]
+        val config = rules.contractScores[contract.rawValue]
         if (config != null) {
             return if (playerCount == 3) config.threePlayerScore else config.fourPlusPlayerScore
         }
@@ -325,7 +424,7 @@ class SettingsManager(context: Context) {
     }
 
     fun getBonusPoints(bonus: HandBonus): Int {
-        val cfg = currentRuleSet.bonusScores
+        val cfg = rules.bonusScores
         val basePoints = when (bonus.type) {
             BonusType.TRULA -> if (bonus.announced) cfg.trulaAnnounced else cfg.trulaBase
             BonusType.KRALJI -> if (bonus.announced) cfg.kraljAnnounced else cfg.kraljBase
@@ -338,6 +437,11 @@ class SettingsManager(context: Context) {
     }
 
     companion object {
+        const val STANDARD = "Standard"
+        private const val KEY_OVERRIDE = "currentRuleSetOverride"
+        private const val KEY_STANDARD_SWITCHES = "standardRuleSetSwitches"
+        private const val KEY_OBVEZNI_MIGRATED = "obvezniKlopMovedIntoRules"
+
         @Volatile
         private var instance: SettingsManager? = null
 

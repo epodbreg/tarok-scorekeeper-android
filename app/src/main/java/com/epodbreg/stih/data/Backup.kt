@@ -141,6 +141,8 @@ data class BackupSettings(
     val obvezniKlopOnZeroOutcome: Boolean? = null,
     val obvezniKlopStep: Int? = null,
     val autoRadlci: Boolean? = null,
+    /** CompactCardsMode raw value ("auto", "always", "never"); unknown values are ignored */
+    val compactCards: String? = null,
     val myPlayerName: String? = null,
     val customRules: List<CustomScoringRules>? = null,
     val currentRuleSet: CustomScoringRules? = null,
@@ -155,6 +157,7 @@ data class BackupSettings(
         obvezniKlopOnZeroOutcome?.let { put("obvezniKlopOnZeroOutcome", it) }
         obvezniKlopStep?.let { put("obvezniKlopStep", it) }
         autoRadlci?.let { put("autoRadlci", it) }
+        compactCards?.let { put("compactCards", it) }
         myPlayerName?.let { put("myPlayerName", it) }
         customRules?.let { put("customRules", backupJson.encodeToJsonElement(ListSerializer(CustomScoringRules.serializer()), it)) }
         currentRuleSet?.let { put("currentRuleSet", backupJson.encodeToJsonElement(CustomScoringRules.serializer(), it)) }
@@ -179,6 +182,7 @@ data class BackupSettings(
                 obvezniKlopOnZeroOutcome = bool("obvezniKlopOnZeroOutcome"),
                 obvezniKlopStep = int("obvezniKlopStep"),
                 autoRadlci = bool("autoRadlci"),
+                compactCards = string("compactCards"),
                 myPlayerName = string("myPlayerName"),
                 customRules = (obj["customRules"] as? JsonArray)?.mapNotNull(::rules),
                 currentRuleSet = rules(obj["currentRuleSet"]),

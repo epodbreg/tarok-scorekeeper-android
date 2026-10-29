@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.epodbreg.stih.model.CustomScoringRules
 import com.epodbreg.stih.model.GameSession
 import com.epodbreg.stih.model.TarokStrings
 import com.epodbreg.stih.model.groupNames
@@ -39,8 +40,27 @@ class SessionManager(context: Context) {
      */
     private var sessionsFileIsProtected = false
 
-    var activeSession: GameSession? by mutableStateOf(null)
-        private set
+    private val activeState = mutableStateOf<GameSession?>(null)
+
+    /** The unfinished game. Every change also tells [activeRulesListener] which rules it plays by. */
+    var activeSession: GameSession?
+        get() = activeState.value
+        private set(value) {
+            val rulesChanged = value?.rules != activeState.value?.rules
+            activeState.value = value
+            // Saved after every round, so only pass it on when the rules actually change
+            if (rulesChanged) activeRulesListener?.invoke(value?.rules)
+        }
+
+    /**
+     * Scoring reads the open game's own rules (SettingsManager.playingRules); [get] wires this
+     * up. Called right away with the current game's rules.
+     */
+    var activeRulesListener: ((CustomScoringRules?) -> Unit)? = null
+        set(value) {
+            field = value
+            value?.invoke(activeSession?.rules)
+        }
     var savedSessions: List<GameSession> by mutableStateOf(emptyList())
         private set
 
@@ -313,7 +333,11 @@ class SessionManager(context: Context) {
 
         fun get(context: Context): SessionManager =
             instance ?: synchronized(this) {
-                instance ?: SessionManager(context.applicationContext).also { instance = it }
+                instance ?: SessionManager(context.applicationContext).also { manager ->
+                    val settings = SettingsManager.get(context)
+                    manager.activeRulesListener = { settings.playingRules = it }
+                    instance = manager
+                }
             }
 
         fun formatDate(epochMillis: Long): String =

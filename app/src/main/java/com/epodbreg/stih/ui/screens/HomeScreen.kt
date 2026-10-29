@@ -24,8 +24,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.epodbreg.stih.data.SessionManager
 import com.epodbreg.stih.model.GameSession
+import com.epodbreg.stih.model.TarokStrings
 import com.epodbreg.stih.ui.theme.StihGreen
 import com.epodbreg.stih.ui.theme.StihOrange
 import com.epodbreg.stih.ui.theme.StihRed
@@ -141,6 +148,8 @@ fun ResumeSessionSheet(
     onDiscard: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    /** Both "start new" and "discard" throw the unfinished game away — ask first */
+    var pendingDiscard by remember { mutableStateOf<(() -> Unit)?>(null) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -171,17 +180,37 @@ fun ResumeSessionSheet(
                     )
                 }
                 Text(
-                    "Ali jo želite nadaljevati?",
+                    "Jo želiš nadaljevati?",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SheetButton("Nadaljuj igro", StihGreen, onResume)
-                SheetButton("Začni novo igro", MaterialTheme.colorScheme.primary, onStartNew)
-                SheetButton("Ne shrani igre", StihRed, onDiscard)
+                SheetButton("Zavrzi in začni novo", MaterialTheme.colorScheme.primary) { pendingDiscard = onStartNew }
+                SheetButton("Zavrzi igro", StihRed) { pendingDiscard = onDiscard }
             }
         }
+    }
+
+    pendingDiscard?.let { action ->
+        AlertDialog(
+            onDismissRequest = { pendingDiscard = null },
+            title = { Text("Zavrzi igro?") },
+            text = {
+                Text(
+                    "Nedokončana igra (${TarokStrings.rundaCountText(session?.roundCount ?: 0)}) bo izbrisana " +
+                        "in je ne bo v zgodovini.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingDiscard = null
+                    action()
+                }) { Text("Zavrzi", color = StihRed) }
+            },
+            dismissButton = { TextButton(onClick = { pendingDiscard = null }) { Text("Prekliči") } },
+        )
     }
 }
 

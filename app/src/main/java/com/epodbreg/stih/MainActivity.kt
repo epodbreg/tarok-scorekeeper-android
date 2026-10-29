@@ -68,9 +68,15 @@ private fun StihApp() {
         mutableStateOf(sessionManager.activeSession?.games?.isNotEmpty() == true)
     }
 
-    fun startGame(players: List<Player>, group: String?) {
+    fun startGame(players: List<Player>, group: String?, ruleSet: String) {
         if (sessionManager.activeSession == null) {
-            sessionManager.startNewSession(GameSession(players = players, groupName = group))
+            // The picked rules become the selected set, and the game keeps a copy
+            if (ruleSet != settings.houseScoringRules && ruleSet in settings.getAllRuleSetNames()) {
+                settings.setHouseRules(ruleSet)
+            }
+            sessionManager.startNewSession(
+                GameSession(players = players, groupName = group, rules = settings.currentRuleSet)
+            )
         }
         gameViewModel = GameViewModel(sessionManager, settings, players)
         screen = Screen.Game
@@ -130,9 +136,11 @@ private fun StihApp() {
             initialGroup = setupGroup,
             knownPlayers = sessionManager.frequentPlayerNames,
             savedSessions = sessionManager.savedSessions,
-            onStart = { players, group ->
+            ruleSetNames = settings.getAllRuleSetNames(),
+            initialRuleSet = settings.houseScoringRules,
+            onStart = { players, group, ruleSet ->
                 sessionManager.clearActiveSession()
-                startGame(players, group)
+                startGame(players, group, ruleSet)
             },
             onCancel = { screen = Screen.Home },
         )
@@ -143,10 +151,8 @@ private fun StihApp() {
                 MainGameScreen(
                     viewModel = vm,
                     onSessionCompleted = { completed -> screen = Screen.Summary(completed) },
-                    onExitWithoutSaving = {
-                        screen = Screen.Home
-                        showResumePrompt = sessionManager.activeSession?.games?.isNotEmpty() == true
-                    },
+                    // The game stays saved; the unfinished-game sheet only shows when the app opens
+                    onLeave = { screen = Screen.Home },
                 )
             } else {
                 screen = Screen.Home

@@ -6,12 +6,12 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.epodbreg.stih.data.SessionManager
 import com.epodbreg.stih.data.SettingsManager
+import com.epodbreg.stih.logic.Standings
 import com.epodbreg.stih.logic.TarokScorer
 import com.epodbreg.stih.model.GameEntry
 import com.epodbreg.stih.model.GameSession
 import com.epodbreg.stih.model.Player
 import com.epodbreg.stih.model.TarokContract
-import com.epodbreg.stih.model.TarokStrings
 import java.util.UUID
 
 /**
@@ -54,8 +54,13 @@ class GameViewModel(
         }
 
     fun restoreSessionIfNeeded() {
-        val existing = sessionManager.activeSession ?: return
+        var existing = sessionManager.activeSession ?: return
         if (existing.players.isEmpty()) return
+        // A game from before 1.9 has no rules of its own: it keeps today's from now on
+        if (existing.rules == null) {
+            existing = existing.copy(rules = settings.currentRuleSet)
+            sessionManager.updateActiveSession(existing)
+        }
 
         players = existing.players
         originalPlayerOrder = existing.players
@@ -97,8 +102,9 @@ class GameViewModel(
             val baseGame = oldGame.copy(
                 totalPoints = oldGame.rawTotalPoints,
                 klopScores = oldGame.rawKlopScores,
+                partnerPoints = null,
             )
-            val result = TarokScorer.processGame(baseGame, currentPlayers, settings.currentRuleSet.generalRules)
+            val result = TarokScorer.processGame(baseGame, currentPlayers, settings.rules.generalRules)
             currentPlayers = applyGameScore(result.entry, result.players, add = true)
             newEntries.add(result.entry)
         }
@@ -151,20 +157,21 @@ class GameViewModel(
 
     /** Display-only: raw score minus the end-of-session penalty for unused radlci. */
     fun liveNetScore(player: Player): Int {
-        val rules = settings.currentRuleSet.generalRules
+        val rules = settings.rules.generalRules
         if (!rules.radlcPenaltyEnabled) return player.score
         return player.score - player.unusedRadlciCount * rules.radlcPenaltyPerUnused
     }
 
     private fun checkObvezniKlop(previousScores: Map<String, Int>, game: GameEntry) {
-        if (!settings.obvezniKlopEnabled) return
+        val rules = settings.rules.generalRules
+        if (!rules.obvezniKlopEnabled) return
 
         var triggerPlayer: Player? = null
 
         // Trigger 1: any player's RAW score changed to a non-negative
         // multiple of the configured step (zero counts)
-        val step = settings.obvezniKlopStep
-        if (settings.obvezniKlopOnRoundScore && step > 0) {
+        val step = rules.klopStep
+        if (rules.obvezniKlopOnRoundScore) {
             triggerPlayer = players.firstOrNull { player ->
                 val prev = previousScores[player.name] ?: player.score
                 val curr = player.score
@@ -173,7 +180,7 @@ class GameViewModel(
         }
 
         // Trigger 2: the game itself totalled exactly 0 (klop and side entries excluded)
-        if (triggerPlayer == null && settings.obvezniKlopOnZeroOutcome) {
+        if (triggerPlayer == null && rules.obvezniKlopOnZeroOutcome) {
             val isRealGame = game.contract != TarokContract.KLOP && !game.contract.isSideEntry
             if (isRealGame && game.totalPoints == 0) {
                 triggerPlayer = players.firstOrNull { it.name == game.declarerName }
@@ -214,14 +221,12 @@ class GameViewModel(
             }
         }
 
+        // The partner's points can differ from the declarer's (radlc doubling only the declarer)
         return basePlayers.map { player ->
             val isDeclarer = player.name == entry.declarerName
-            val isPartner = entry.partnerName != null &&
-                entry.partnerName != TarokStrings.ZARUFAL &&
-                player.name == entry.partnerName &&
-                entry.partnerName != entry.declarerName
+            val isPartner = player.name == entry.actualPartner
             if (isDeclarer || isPartner) {
-                player.copy(score = player.score + entry.totalPoints * multiplier)
+                player.copy(score = player.score + entry.pointsFor(player.name) * multiplier)
             } else player
         }
     }
@@ -232,7 +237,8 @@ class GameViewModel(
         // Preserve original radlci for session history
         val originalRadlci = players.map { it.radlci }
 
-        val rules = settings.currentRuleSet.generalRules
+        // The game's own rules: ending it has already cleared the rules in play
+        val rules = (session.rules ?: settings.currentRuleSet).generalRules
         val endedPlayers = players.map { player ->
             val penalty = if (rules.radlcPenaltyEnabled) {
                 player.unusedRadlciCount * rules.radlcPenaltyPerUnused
@@ -286,8 +292,9 @@ class GameViewModel(
         return originalPlayerOrder[currentDealerIndex].name
     }
 
+    /** Best score first, ties in seat order; equal scores share a place (0, 0, 2) */
     val standings: List<Pair<Player, Int>>
-        get() = players.sortedByDescending { it.score }.mapIndexed { idx, p -> p to idx }
+        get() = Standings.of(players)
 
     val slepaci: Set<String>
         get() = GameSession.computeSlepaci(gameHistory)

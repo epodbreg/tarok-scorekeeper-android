@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddCircleOutline
@@ -29,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.epodbreg.stih.model.GameSession
 import com.epodbreg.stih.model.groupNames
+import com.epodbreg.stih.model.lastRuleSetName
 import com.epodbreg.stih.model.isPossiblyDifferentPerson
 import com.epodbreg.stih.model.normalizedGroup
 import com.epodbreg.stih.ui.theme.StihOrange
@@ -75,10 +78,21 @@ fun PlayerSetupScreen(
     knownPlayers: List<String> = emptyList(),
     /** For group names and the "different person with the same name?" warning */
     savedSessions: List<GameSession> = emptyList(),
-    onStart: (players: List<Player>, group: String?) -> Unit,
+    /** All rule sets; the "Pravila" row shows only when there's more than one */
+    ruleSetNames: List<String> = emptyList(),
+    /** The selected set; picking a group switches to the one its last game used */
+    initialRuleSet: String = "Standard",
+    onStart: (players: List<Player>, group: String?, ruleSet: String) -> Unit,
     onCancel: () -> Unit,
 ) {
     var group by remember { mutableStateOf(initialGroup) }
+    var ruleSet by remember { mutableStateOf(initialRuleSet) }
+    // A group plays by the rules of its last game, while that rule set still exists
+    LaunchedEffect(group) {
+        group?.let { savedSessions.lastRuleSetName(inGroup = it) }
+            ?.takeIf { it in ruleSetNames }
+            ?.let { ruleSet = it }
+    }
     var playerCount by remember { mutableStateOf(maxOf(3, prefills.size)) }
     val playerNames = remember {
         (prefills + List(5) { "" }).take(5).toMutableStateList()
@@ -158,11 +172,17 @@ fun PlayerSetupScreen(
                 }
             }
 
-            GroupPickerRow(
-                group = group,
-                groups = savedSessions.groupNames,
-                onGroup = { group = it },
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                GroupPickerRow(
+                    group = group,
+                    groups = savedSessions.groupNames,
+                    onGroup = { group = it },
+                )
+                // Only when there's a choice: with Standard alone the row would be noise
+                if (ruleSetNames.size > 1) {
+                    RulesPickerRow(ruleSet = ruleSet, names = ruleSetNames, onRuleSet = { ruleSet = it })
+                }
+            }
 
             if (knownPlayers.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
@@ -244,7 +264,7 @@ fun PlayerSetupScreen(
                         val players = (0 until playerCount).map { idx ->
                             Player(name = playerNames[idx].trim().ifEmpty { "Igralec_ka ${idx + 1}" })
                         }
-                        onStart(players, group)
+                        onStart(players, group, ruleSet)
                     }
                     .padding(vertical = 14.dp),
                 contentAlignment = Alignment.Center,
@@ -256,6 +276,44 @@ fun PlayerSetupScreen(
 }
 
 /** "Skupina" picker: Brez skupine / existing groups / Nova skupina… */
+@Composable
+private fun RulesPickerRow(ruleSet: String, names: List<String>, onRuleSet: (String) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Icon(
+            Icons.AutoMirrored.Outlined.MenuBook, contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp),
+        )
+        Text(
+            "Pravila",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp).weight(1f),
+        )
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { menuOpen = true }) {
+                Text(
+                    ruleSet,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                names.forEach { name ->
+                    DropdownMenuItem(
+                        text = { Text(name) },
+                        trailingIcon = { if (ruleSet == name) Icon(Icons.Filled.Check, contentDescription = null) },
+                        onClick = { onRuleSet(name); menuOpen = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun GroupPickerRow(group: String?, groups: List<String>, onGroup: (String?) -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }

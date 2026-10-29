@@ -194,7 +194,7 @@ fun SessionHistoryScreen(
                 )
                 Text("Ni shranjenih sej", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
                 Text(
-                    "Ko zaključite igro, se bo pojavila tukaj",
+                    "Ko zaključiš igro, se bo pojavila tukaj",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray,
                     textAlign = TextAlign.Center,
@@ -277,7 +277,7 @@ fun SessionHistoryScreen(
         AlertDialog(
             onDismissRequest = { sessionToDelete = null },
             title = { Text("Izbriši sejo?") },
-            text = { Text("Ali želite izbrisati sejo ${SessionManager.getSessionName(session)}?") },
+            text = { Text("Seja ${SessionManager.getSessionName(session)} bo izbrisana iz zgodovine.") },
             confirmButton = {
                 TextButton(onClick = {
                     sessionManager.deleteSession(session.id)

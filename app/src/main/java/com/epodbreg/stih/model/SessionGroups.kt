@@ -27,6 +27,12 @@ fun List<GameSession>.filtered(by: SessionFilter): List<GameSession> = when (by)
     SessionFilter.Ungrouped -> filter { it.groupName == null }
 }
 
+/** The rules (by name) of the group's latest game; null if none was saved with its rules */
+fun List<GameSession>.lastRuleSetName(inGroup: String): String? =
+    filter { it.groupName == inGroup && it.rules != null }
+        .maxByOrNull { it.startTime }
+        ?.rules?.name
+
 /** Sessions with exactly the same set of players — seat order doesn't matter. */
 fun List<GameSession>.withSamePlayers(session: GameSession): List<GameSession> {
     val table = session.playerNames.toSet()

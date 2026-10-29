@@ -221,7 +221,7 @@ fun SessionSummaryScreen(
         AlertDialog(
             onDismissRequest = { showDiscardConfirmation = false },
             title = { Text("Ne shrani seje?") },
-            text = { Text("Ste prepričani, da ne želite shraniti seje?") },
+            text = { Text("Seja se ne bo shranila v zgodovino.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDiscardConfirmation = false
@@ -275,7 +275,7 @@ fun FinalScoreRow(
                     }
                 }
                 if (player != null && player.radlci.isNotEmpty()) {
-                    RadlcRow(radlci = player.radlci)
+                    RadlcRow(radlci = player.radlci, maxPips = 8, size = 16.dp)
                 }
             }
             Text("${score.score}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)

@@ -128,6 +128,15 @@ fun GameHistoryCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Soigralec_ka:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(partner, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                        // The declarer's radlc didn't double the partner (table rule)
+                        val partnerPoints = game.partnerPoints
+                        if (partnerPoints != null && partnerPoints != game.totalPoints) {
+                            Text(
+                                if (partnerPoints > 0) "+$partnerPoints" else "$partnerPoints",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (partnerPoints > 0) StihGreen else StihRed,
+                            )
+                        }
                     }
                 }
                 // Who called the kontra (if recorded), in the kontra level's colour
