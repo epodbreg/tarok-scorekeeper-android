@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -67,7 +68,8 @@ fun SessionSummaryScreen(
 ) {
     var showDiscardConfirmation by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Edge to edge: keep clear of the status bar and the navigation buttons
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         // Header
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
