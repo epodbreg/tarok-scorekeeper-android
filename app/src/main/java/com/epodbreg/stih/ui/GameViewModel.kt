@@ -231,7 +231,20 @@ class GameViewModel(
         }
     }
 
+    /** The game as it was before [endSession], so leaving the summary can reopen it */
+    private var sessionBeforeEnd: GameSession? = null
+
+    /** Back from the summary: the game continues as if it had never been ended (like iOS) */
+    fun reopenEndedSession(): Boolean {
+        val session = sessionBeforeEnd ?: return false
+        sessionBeforeEnd = null
+        sessionManager.setActiveSessionDirect(session)
+        restoreSessionIfNeeded()
+        return true
+    }
+
     fun endSession(): GameSession? {
+        sessionBeforeEnd = sessionManager.activeSession
         val session = sessionManager.endCurrentSession() ?: return null
 
         // Preserve original radlci for session history

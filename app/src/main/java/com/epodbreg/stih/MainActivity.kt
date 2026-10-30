@@ -159,26 +159,33 @@ private fun StihApp() {
             }
         }
 
-        is Screen.Summary -> SessionSummaryScreen(
-            session = s.session,
-            onSave = {
-                sessionManager.saveSession(s.session)
-                gameViewModel = null
-                screen = Screen.Home
-            },
-            onNewWithSamePlayers = {
-                sessionManager.saveSession(s.session)
-                gameViewModel = null
-                setupPrefills = s.session.playerNames
-                setupGroup = s.session.groupName
-                screen = Screen.PlayerSetup
-            },
-            onDiscard = {
-                sessionManager.clearActiveSession()
-                gameViewModel = null
-                screen = Screen.Home
-            },
-        )
+        is Screen.Summary -> {
+            // Back from the summary goes back into the game (it's only saved or discarded
+            // from the buttons); before, back closed the app and the game was lost
+            BackHandler {
+                if (gameViewModel?.reopenEndedSession() == true) screen = Screen.Game
+            }
+            SessionSummaryScreen(
+                session = s.session,
+                onSave = {
+                    sessionManager.saveSession(s.session)
+                    gameViewModel = null
+                    screen = Screen.Home
+                },
+                onNewWithSamePlayers = {
+                    sessionManager.saveSession(s.session)
+                    gameViewModel = null
+                    setupPrefills = s.session.playerNames
+                    setupGroup = s.session.groupName
+                    screen = Screen.PlayerSetup
+                },
+                onDiscard = {
+                    sessionManager.clearActiveSession()
+                    gameViewModel = null
+                    screen = Screen.Home
+                },
+            )
+        }
 
         Screen.History -> SessionHistoryScreen(
             sessionManager = sessionManager,

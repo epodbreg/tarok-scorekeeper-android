@@ -16,14 +16,14 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.epodbreg.stih"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.epodbreg.stih"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 5
-        versionName = "1.9"
+        versionName = "1.8"
     }
 
     signingConfigs {
