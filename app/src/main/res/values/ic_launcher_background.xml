@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#007AFF</color>
+    <!-- The icon's indigo, so nothing shows at the edges while the launcher animates it -->
+    <color name="ic_launcher_background">#3131C5</color>
 </resources>
