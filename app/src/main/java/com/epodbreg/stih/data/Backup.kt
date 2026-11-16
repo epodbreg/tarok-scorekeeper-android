@@ -67,7 +67,7 @@ data class StihBackup(
          * (the automatic daily copies and the "-unreadable-" copies use that format).
          */
         fun read(text: String): StihBackup {
-            val first = text.firstOrNull { !it.isWhitespace() && it != '﻿' }
+            val first = text.firstOrNull { !it.isWhitespace() && it != '\uFEFF' }
             return when (first) {
                 '[' -> {
                     val result = try {
