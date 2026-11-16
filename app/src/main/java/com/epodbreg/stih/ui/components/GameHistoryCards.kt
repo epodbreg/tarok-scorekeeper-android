@@ -6,6 +6,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +44,7 @@ import com.epodbreg.stih.ui.theme.StihRed
  * History card for regular (non-klop) games. Port of GameHistoryCard.swift.
  * Tap to edit, long-press for delete handled by the caller via onLongPress.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun GameHistoryCard(
     game: GameEntry,
@@ -154,7 +156,11 @@ fun GameHistoryCard(
                     }
                 }
                 if (game.bonuses.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Wraps onto a second row when the badges don't fit on one
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         game.bonuses.forEach { bonus -> BonusBadge(bonus) }
                     }
                 }
@@ -204,6 +210,7 @@ private fun BonusBadge(bonus: HandBonus) {
                 color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 textDecoration = if (isLost) TextDecoration.LineThrough else TextDecoration.None,
             )
             if (bonus.kontraLevel > 0) {
