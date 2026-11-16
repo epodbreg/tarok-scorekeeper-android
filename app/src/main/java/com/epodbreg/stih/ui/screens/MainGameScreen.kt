@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FabPosition
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -147,6 +149,20 @@ fun MainGameScreen(
     BackHandler { showBackWarning = true }
 
     Scaffold(
+        // Floats over the list, so adding a game never needs scrolling
+        floatingActionButtonPosition = FabPosition.Center,
+        floatingActionButton = {
+            if (recentlyDeleted == null) {
+                FloatingActionButton(
+                    onClick = { editState = EditState.Adding },
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Dodaj igro", modifier = Modifier.size(28.dp))
+                }
+            }
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = {
@@ -275,23 +291,6 @@ fun MainGameScreen(
                         }
                     }
 
-                    // Add game button
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .clickable { editState = EditState.Adding }
-                            .padding(vertical = 13.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Filled.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                            Text("Dodaj igro", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                        }
-                    }
-
                     // Game history section
                     Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -328,7 +327,7 @@ fun MainGameScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (viewModel.gameHistory.isEmpty()) {
                                     Text(
-                                        "Ni zabeleženih iger.\nDodaj prvo igro za začetek",
+                                        "Ni zabeleženih iger.\nDodaj prvo igro z gumbom + spodaj",
                                         textAlign = TextAlign.Center,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier
@@ -356,7 +355,7 @@ fun MainGameScreen(
                             }
                         }
                     }
-                    Spacer(Modifier.height(64.dp))
+                    Spacer(Modifier.height(96.dp))   // room under the last row for the floating button
                 }
             }
 
