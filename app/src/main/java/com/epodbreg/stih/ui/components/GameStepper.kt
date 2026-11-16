@@ -1431,6 +1431,14 @@ private fun KlopStep(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Klop rezultat (za vse)", style = MaterialTheme.typography.titleLarge)
+        // With 6 or more, some sat this round out
+        if (players.size > 5) {
+            Text(
+                "Pusti prazno pri tistih, ki niso igrali.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         players.forEach { player ->
             val result = klopResults[player.name] ?: KlopResultState.NONE

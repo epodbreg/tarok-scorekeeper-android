@@ -268,6 +268,24 @@ data class Player(
     val hasUnusedRadlci: Boolean get() = radlci.contains(false)
 }
 
+/**
+ * Table size. With 6 or more some sit a round out; the app doesn't track who.
+ * Port of TarokConstants.Players.
+ */
+object TableSize {
+    const val MIN = 3
+    const val MAX = 10
+
+    /** Seats [names] from the first chair on; the table is never smaller than the minimum. */
+    fun seating(names: List<String>): Pair<List<String>, Int> {
+        val seated = names.take(MAX)
+        return (seated + List(MAX - seated.size) { "" }) to maxOf(MIN, seated.size)
+    }
+
+    /** Slovenian plural: 3 igralci, 4 igralci, 5 igralcev */
+    fun playersWord(count: Int) = if (count < 5) "igralci" else "igralcev"
+}
+
 @Serializable
 data class PlayerScore(
     val name: String,

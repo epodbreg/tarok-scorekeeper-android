@@ -18,8 +18,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -46,6 +48,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.epodbreg.stih.model.Player
+import com.epodbreg.stih.model.TableSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
@@ -93,16 +102,15 @@ fun PlayerSetupScreen(
             ?.takeIf { it in ruleSetNames }
             ?.let { ruleSet = it }
     }
-    var playerCount by remember { mutableStateOf(maxOf(3, prefills.size)) }
-    val playerNames = remember {
-        (prefills + List(5) { "" }).take(5).toMutableStateList()
-    }
+    val seating = remember { TableSize.seating(prefills) }
+    var playerCount by remember { mutableStateOf(seating.second) }
+    val playerNames = remember { seating.first.toMutableStateList() }
     val haptics = LocalHapticFeedback.current
 
     fun seatOf(name: String) = (0 until playerCount).firstOrNull { playerNames[it].trim() == name }
 
     /**
-     * Tap a saved name: fills the first empty seat (growing the table up to 5),
+     * Tap a saved name: fills the first empty seat (growing the table up to the maximum),
      * or clears it again if it's already seated.
      */
     fun togglePick(name: String) {
@@ -111,7 +119,7 @@ fun PlayerSetupScreen(
         when {
             seat != null -> playerNames[seat] = ""
             empty != null -> playerNames[empty] = name
-            playerCount < 5 -> {
+            playerCount < TableSize.MAX -> {
                 playerNames[playerCount] = name
                 playerCount++
             }
@@ -145,31 +153,26 @@ fun PlayerSetupScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            // 3 / 4 / 5 selector
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                (3..5).forEach { n ->
-                    val selected = playerCount == n
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .border(
-                                2.dp,
-                                if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                CircleShape,
-                            )
-                            .clickable { playerCount = n },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "$n",
-                            fontSize = 20.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
+            // Player count, 3 to 10
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CountButton(Icons.Filled.Remove, "Manj igralcev", enabled = playerCount > TableSize.MIN) { playerCount-- }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .widthIn(min = 70.dp)
+                        .clearAndSetSemantics { contentDescription = "$playerCount ${TableSize.playersWord(playerCount)}" },
+                ) {
+                    Text("$playerCount", fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        TableSize.playersWord(playerCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                CountButton(Icons.Filled.Add, "Več igralcev", enabled = playerCount < TableSize.MAX) { playerCount++ }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -384,5 +387,21 @@ private fun GroupPickerRow(group: String?, groups: List<String>, onGroup: (Strin
             },
             dismissButton = { TextButton(onClick = { newGroupDialog = false }) { Text("Prekliči") } },
         )
+    }
+}
+
+@Composable
+private fun CountButton(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .alpha(if (enabled) 1f else 0.35f)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(2.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+            .clickable(enabled = enabled, onClickLabel = label, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onSurface)
     }
 }
