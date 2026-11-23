@@ -190,46 +190,12 @@ fun MainGameScreen(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header: dealer pill + end session
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(StihOrange)
-                            .clickable { showDealerMenu = true }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Text("Deli", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text(viewModel.getCurrentDealerName(), color = Color.White, fontSize = 13.sp)
-                        }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(StihRed)
-                            .clickable {
-                                viewModel.endSession()?.let { onSessionCompleted(it) }
-                            }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    ) {
-                        Text("Zaključi sejo", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                HorizontalDivider()
-
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
+                        // Room on top for the floating pills; the cards scroll under them
+                        .padding(top = 64.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     // Compact: the sole leader full width, the rest two per row; an opened half
@@ -356,6 +322,30 @@ fun MainGameScreen(
                         }
                     }
                     Spacer(Modifier.height(96.dp))   // room under the last row for the floating button
+                }
+            }
+
+            // Dealer and end-session pills float over the cards, like the + button
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                FloatingPill(color = StihOrange, onClick = { showDealerMenu = true }, modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        Text("Deli", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            viewModel.getCurrentDealerName(), color = Color.White, fontSize = 13.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                FloatingPill(color = StihRed, onClick = { viewModel.endSession()?.let { onSessionCompleted(it) } }) {
+                    Text("Zaključi sejo", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }
             }
 
@@ -777,5 +767,18 @@ private fun OverlayChoiceButton(
     ) {
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
         Text(text, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+    }
+}
+
+/** A coloured capsule with a shadow, floating over the content like the + button */
+@Composable
+private fun FloatingPill(
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(onClick = onClick, shape = CircleShape, color = color, shadowElevation = 6.dp, modifier = modifier) {
+        Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) { content() }
     }
 }
