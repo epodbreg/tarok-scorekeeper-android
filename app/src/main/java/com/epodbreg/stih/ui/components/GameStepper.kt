@@ -6,8 +6,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -101,6 +103,9 @@ fun GameStepperSheet(
     onSave: (GameEntry) -> Unit,
     onDelete: (() -> Unit)? = null,
     onCancel: () -> Unit,
+    /** Wide screens: sits open in its own half instead of sliding up as a sheet */
+    embedded: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -387,148 +392,168 @@ fun GameStepperSheet(
         }
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onCancel,
-        sheetState = sheetState,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 16.dp),
-        ) {
-            // Header: breadcrumb chips
-            StepperHeader(
-                step = step,
+    val stepContent: @Composable ColumnScope.() -> Unit = {
+        // Header: breadcrumb chips
+        StepperHeader(
+            step = step,
+            players = players,
+            selectedPlayer = selectedPlayer,
+            selectedContract = selectedContract,
+            selectedPartner = selectedPartner,
+            isValatSolo = isValatSolo,
+            contractsWithPartner = contractsWithPartner,
+            isEditing = initialGame != null,
+        )
+        HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+        when (step) {
+            AddGameStep.PLAYER -> PlayerStep(
                 players = players,
                 selectedPlayer = selectedPlayer,
-                selectedContract = selectedContract,
+                onSelect = { selectedPlayer = it; step = AddGameStep.CONTRACT },
+                onKlop = { selectedContract = TarokContract.KLOP; step = AddGameStep.KLOP },
+            )
+            AddGameStep.CONTRACT -> ContractStep(
+                contracts = availableContracts(players.size),
+                selected = selectedContract,
+                onSelect = { c ->
+                    selectedContract = c
+                    step = stepAfterContract(c)
+                },
+            )
+            AddGameStep.UNDERLYING_GAME -> UnderlyingGameStep(
+                contracts = availableUnderlyingGames(players.size),
+                selected = selectedUnderlyingGame,
+                baseScore = { settings.getContractBaseScore(it, players.size) },
+                onSelect = { c ->
+                    selectedUnderlyingGame = c
+                    step = if (c in contractsWithPartner) AddGameStep.PARTNER else AddGameStep.OUTCOME
+                },
+            )
+            AddGameStep.PARTNER -> PartnerStep(
+                players = players,
+                declarerIndex = selectedPlayer,
                 selectedPartner = selectedPartner,
                 isValatSolo = isValatSolo,
-                contractsWithPartner = contractsWithPartner,
-                isEditing = initialGame != null,
+                showSolo = selectedContract == TarokContract.VALAT || selectedContract == TarokContract.BARVNI_VALAT,
+                onSelect = { idx ->
+                    selectedPartner = idx
+                    isValatSolo = false
+                    step = AddGameStep.OUTCOME
+                },
+                onZarufal = {
+                    selectedPartner = null
+                    isValatSolo = false
+                    step = AddGameStep.OUTCOME
+                },
+                onSolo = {
+                    selectedPartner = null
+                    isValatSolo = true
+                    step = AddGameStep.OUTCOME
+                },
             )
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+            AddGameStep.OUTCOME -> OutcomeStep(
+                settings = settings,
+                contract = selectedContract,
+                playerCount = players.size,
+                outcome = outcome,
+                onOutcome = { outcome = it },
+                points = points,
+                onPoints = { points = it },
+                gameKontra = gameKontra,
+                onGameKontra = { gameKontra = (gameKontra + 1) % 5 },
+                kontraCandidates = kontraCandidates(),
+                kontraCaller = kontraCaller,
+                onKontraCaller = { name -> kontraCaller = if (kontraCaller == name) null else name },
+                bonusStates = bonusStates,
+                bonusKontras = bonusKontras,
+                expandedBonuses = expandedBonuses,
+                isValatAnnounced = isValatAnnounced,
+                onValatAnnounced = { isValatAnnounced = it },
+                underlyingGame = selectedUnderlyingGame,
+                currentBonuses = ::currentBonuses,
+            )
+            AddGameStep.KLOP -> KlopStep(
+                players = players,
+                klopPoints = klopPoints,
+                klopResults = klopResults,
+            )
+        }
 
-            when (step) {
-                AddGameStep.PLAYER -> PlayerStep(
-                    players = players,
-                    selectedPlayer = selectedPlayer,
-                    onSelect = { selectedPlayer = it; step = AddGameStep.CONTRACT },
-                    onKlop = { selectedContract = TarokContract.KLOP; step = AddGameStep.KLOP },
-                )
-                AddGameStep.CONTRACT -> ContractStep(
-                    contracts = availableContracts(players.size),
-                    selected = selectedContract,
-                    onSelect = { c ->
-                        selectedContract = c
-                        step = stepAfterContract(c)
-                    },
-                )
-                AddGameStep.UNDERLYING_GAME -> UnderlyingGameStep(
-                    contracts = availableUnderlyingGames(players.size),
-                    selected = selectedUnderlyingGame,
-                    baseScore = { settings.getContractBaseScore(it, players.size) },
-                    onSelect = { c ->
-                        selectedUnderlyingGame = c
-                        step = if (c in contractsWithPartner) AddGameStep.PARTNER else AddGameStep.OUTCOME
-                    },
-                )
-                AddGameStep.PARTNER -> PartnerStep(
-                    players = players,
-                    declarerIndex = selectedPlayer,
-                    selectedPartner = selectedPartner,
-                    isValatSolo = isValatSolo,
-                    showSolo = selectedContract == TarokContract.VALAT || selectedContract == TarokContract.BARVNI_VALAT,
-                    onSelect = { idx ->
-                        selectedPartner = idx
-                        isValatSolo = false
-                        step = AddGameStep.OUTCOME
-                    },
-                    onZarufal = {
-                        selectedPartner = null
-                        isValatSolo = false
-                        step = AddGameStep.OUTCOME
-                    },
-                    onSolo = {
-                        selectedPartner = null
-                        isValatSolo = true
-                        step = AddGameStep.OUTCOME
-                    },
-                )
-                AddGameStep.OUTCOME -> OutcomeStep(
-                    settings = settings,
-                    contract = selectedContract,
-                    playerCount = players.size,
-                    outcome = outcome,
-                    onOutcome = { outcome = it },
-                    points = points,
-                    onPoints = { points = it },
-                    gameKontra = gameKontra,
-                    onGameKontra = { gameKontra = (gameKontra + 1) % 5 },
-                    kontraCandidates = kontraCandidates(),
-                    kontraCaller = kontraCaller,
-                    onKontraCaller = { name -> kontraCaller = if (kontraCaller == name) null else name },
-                    bonusStates = bonusStates,
-                    bonusKontras = bonusKontras,
-                    expandedBonuses = expandedBonuses,
-                    isValatAnnounced = isValatAnnounced,
-                    onValatAnnounced = { isValatAnnounced = it },
-                    underlyingGame = selectedUnderlyingGame,
-                    currentBonuses = ::currentBonuses,
-                )
-                AddGameStep.KLOP -> KlopStep(
-                    players = players,
-                    klopPoints = klopPoints,
-                    klopResults = klopResults,
-                )
+        if (initialGame != null && step == AddGameStep.KLOP && onDelete != null) {
+            TextButton(
+                onClick = { onDelete(); onCancel() },
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text("Izbriši roko", color = StihRed)
             }
+        }
 
-            if (initialGame != null && step == AddGameStep.KLOP && onDelete != null) {
-                TextButton(
-                    onClick = { onDelete(); onCancel() },
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                ) {
-                    Text("Izbriši roko", color = StihRed)
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Bottom buttons: cancel / back / next
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    }
+    val buttonRow: @Composable () -> Unit = {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CapsuleButton(
+                text = "Prekliči",
+                background = MaterialTheme.colorScheme.surfaceVariant,
+                foreground = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                onClick = onCancel,
+            )
+            if (step != AddGameStep.PLAYER) {
                 CapsuleButton(
-                    text = "Prekliči",
-                    background = MaterialTheme.colorScheme.surfaceVariant,
-                    foreground = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "Nazaj",
+                    background = StihOrange.copy(alpha = 0.2f),
+                    foreground = StihOrange,
                     modifier = Modifier.weight(1f),
-                    onClick = onCancel,
-                )
-                if (step != AddGameStep.PLAYER) {
-                    CapsuleButton(
-                        text = "Nazaj",
-                        background = StihOrange.copy(alpha = 0.2f),
-                        foreground = StihOrange,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            if (step == AddGameStep.OUTCOME) expandedBonuses.clear()
-                            step = previousStep()
-                        },
-                    )
-                }
-                CapsuleButton(
-                    text = if (step == AddGameStep.KLOP || step == AddGameStep.OUTCOME) {
-                        if (step == AddGameStep.KLOP) (if (initialGame == null) "Dodaj" else "Shrani") else "Naprej"
-                    } else "Naprej",
-                    background = if (canAdvance) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    foreground = Color.White,
-                    enabled = canAdvance,
-                    modifier = Modifier.weight(1f),
-                    onClick = { advance() },
+                    onClick = {
+                        if (step == AddGameStep.OUTCOME) expandedBonuses.clear()
+                        step = previousStep()
+                    },
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            CapsuleButton(
+                text = if (step == AddGameStep.KLOP || step == AddGameStep.OUTCOME) {
+                    if (step == AddGameStep.KLOP) (if (initialGame == null) "Dodaj" else "Shrani") else "Naprej"
+                } else "Naprej",
+                background = if (canAdvance) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                foreground = Color.White,
+                enabled = canAdvance,
+                modifier = Modifier.weight(1f),
+                onClick = { advance() },
+            )
+        }
+    }
+
+    if (embedded) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = modifier.fillMaxSize(),
+        ) {
+            // Buttons stay at the bottom of the panel; the steps scroll above them
+            Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), content = stepContent)
+                Spacer(Modifier.height(12.dp))
+                buttonRow()
+            }
+        }
+    } else {
+        ModalBottomSheet(
+            onDismissRequest = onCancel,
+            sheetState = sheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 16.dp),
+            ) {
+                stepContent()
+                Spacer(Modifier.height(12.dp))
+                buttonRow()
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 }

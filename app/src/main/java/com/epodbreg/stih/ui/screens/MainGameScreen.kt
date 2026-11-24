@@ -1,5 +1,16 @@
 package com.epodbreg.stih.ui.screens
 
+import androidx.compose.runtime.key
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.foundation.layout.fillMaxHeight
+import com.epodbreg.stih.model.CompactCardsMode
+import com.epodbreg.stih.ui.layout.GameSplit
+import com.epodbreg.stih.ui.layout.WideLayout
+import com.epodbreg.stih.ui.layout.rememberFoldInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
@@ -148,11 +159,19 @@ fun MainGameScreen(
 
     BackHandler { showBackWarning = true }
 
+    // Wide screens: players in one half, game entry open in the other (along the fold if there is one)
+    val configuration = LocalConfiguration.current
+    val fold = rememberFoldInfo()
+    val split = WideLayout.decide(configuration.screenWidthDp, configuration.screenHeightDp, fold)
+    val rootView = LocalView.current
+    var contentBottomPx by remember { mutableStateOf(0f) }
+    var embeddedStepperKey by remember { mutableStateOf(0) }
+
     Scaffold(
         // Floats over the list, so adding a game never needs scrolling
         floatingActionButtonPosition = FabPosition.Center,
         floatingActionButton = {
-            if (recentlyDeleted == null) {
+            if (recentlyDeleted == null && split == GameSplit.NONE) {
                 FloatingActionButton(
                     onClick = { editState = EditState.Adding },
                     shape = CircleShape,
@@ -188,164 +207,247 @@ fun MainGameScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        // Room on top for the floating pills; the cards scroll under them
-                        .padding(top = 64.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    // Compact: the sole leader full width, the rest two per row; an opened half
-                    // card's details open under its row. One layout, so cards slide, not swap.
-                    val standings = viewModel.standings
-                    val leaderId = Standings.soleLeader(standings)?.id
-                    val byId = standings.associateBy { it.first.id }
-                    val compact = viewModel.settings.compactCards.isCompact(viewModel.players.size)
-                    val order = standings.map { it.first.id }
-                    val slots = if (compact) {
-                        PlayerCardsLayout.compactSlots(order, soleLeader = leaderId, opened = expandedPlayerIds)
-                    } else {
-                        PlayerCardsLayout.fullSlots(order)
-                    }
-                    PlayerCardsGrid(slots = slots, modifier = Modifier.padding(horizontal = 12.dp)) { slot ->
-                        val (player, rank) = byId[slot.player] ?: return@PlayerCardsGrid
-                        val style = when (val kind = slot.kind) {
-                            is PlayerCardSlot.Kind.Card -> if (kind.fullWidth) PlayerCardStyle.STANDARD else PlayerCardStyle.HALF
-                            is PlayerCardSlot.Kind.Details -> PlayerCardStyle.DETAILS
-                        }
-                        val card = @Composable {
-                            PlayerScoreCard(
-                                player = player,
-                                standing = rank,
-                                isLeader = player.id == leaderId,
-                                isExpanded = player.id in expandedPlayerIds,
-                                isDealer = player.name == viewModel.getCurrentDealerName(),
-                                isSlepar = player.name in viewModel.slepaci,
-                                liveNetScore = viewModel.liveNetScore(player),
-                                showNetScore = viewModel.settings.rules.generalRules.radlcPenaltyEnabled &&
-                                    player.hasUnusedRadlci,
-                                gameHistory = viewModel.gameHistory,
-                                style = style,
-                                onExpandToggle = {
-                                    expandedPlayerIds = when {
-                                        player.id in expandedPlayerIds -> expandedPlayerIds - player.id
-                                        // One half card open at a time; the leader's full card is separate
-                                        compact -> expandedPlayerIds.filter { it == leaderId }.toSet() + player.id
-                                        else -> expandedPlayerIds + player.id
-                                    }
-                                },
-                                onPenalty = { penaltyPlayerId = player.id },
-                                // Auto-radlci lock: pips are read-only status unless disabled
-                                onRadlcTap = if (viewModel.settings.autoRadlci) null
-                                else { index -> viewModel.toggleRadlc(player.id, index) },
-                            )
-                        }
-                        val details = slot.kind as? PlayerCardSlot.Kind.Details
-                        if (details == null) {
-                            card()
-                        } else {
-                            val appear = remember { MutableTransitionState(false).apply { targetState = true } }
-                            AnimatedVisibility(visibleState = appear, enter = fadeIn() + expandVertically(expandFrom = Alignment.Top)) {
-                                Box {
-                                    card()
-                                    DetailsPointer(underLeftCard = details.underLeftCard)
-                                }
-                            }
-                        }
-                    }
-
-                    // Game history section
-                    Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .onGloballyPositioned { contentBottomPx = it.positionInWindow().y + it.size.height },
+        ) {
+            val playersPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                Box(paneModifier) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isHistoryExpanded = !isHistoryExpanded },
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState())
+                                // Room on top for the floating pills; the cards scroll under them
+                                .padding(top = 64.dp, bottom = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            Text("Zgodovina iger", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            if (viewModel.roundCount > 0) {
-                                Spacer(Modifier.width(8.dp))
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                ) {
-                                    Text(
-                                        "${viewModel.roundCount}",
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            // Compact: the sole leader full width, the rest two per row; an opened half
+                            // card's details open under its row. One layout, so cards slide, not swap.
+                            val standings = viewModel.standings
+                            val leaderId = Standings.soleLeader(standings)?.id
+                            val byId = standings.associateBy { it.first.id }
+                            // Split screen: two per row, so more players fit their half (unless compact is turned off)
+                    val compactMode = viewModel.settings.compactCards
+                    val compact = compactMode != CompactCardsMode.NEVER &&
+                        (split != GameSplit.NONE || compactMode.isCompact(viewModel.players.size))
+                            val order = standings.map { it.first.id }
+                            val slots = if (compact) {
+                                PlayerCardsLayout.compactSlots(order, soleLeader = leaderId, opened = expandedPlayerIds)
+                            } else {
+                                PlayerCardsLayout.fullSlots(order)
+                            }
+                            PlayerCardsGrid(slots = slots, modifier = Modifier.padding(horizontal = 12.dp)) { slot ->
+                                val (player, rank) = byId[slot.player] ?: return@PlayerCardsGrid
+                                val style = when (val kind = slot.kind) {
+                                    is PlayerCardSlot.Kind.Card -> if (kind.fullWidth) PlayerCardStyle.STANDARD else PlayerCardStyle.HALF
+                                    is PlayerCardSlot.Kind.Details -> PlayerCardStyle.DETAILS
+                                }
+                                val card = @Composable {
+                                    PlayerScoreCard(
+                                        player = player,
+                                        standing = rank,
+                                        isLeader = player.id == leaderId,
+                                        isExpanded = player.id in expandedPlayerIds,
+                                        isDealer = player.name == viewModel.getCurrentDealerName(),
+                                        isSlepar = player.name in viewModel.slepaci,
+                                        liveNetScore = viewModel.liveNetScore(player),
+                                        showNetScore = viewModel.settings.rules.generalRules.radlcPenaltyEnabled &&
+                                            player.hasUnusedRadlci,
+                                        gameHistory = viewModel.gameHistory,
+                                        style = style,
+                                        onExpandToggle = {
+                                            expandedPlayerIds = when {
+                                                player.id in expandedPlayerIds -> expandedPlayerIds - player.id
+                                                // One half card open at a time; the leader's full card is separate
+                                                compact -> expandedPlayerIds.filter { it == leaderId }.toSet() + player.id
+                                                else -> expandedPlayerIds + player.id
+                                            }
+                                        },
+                                        onPenalty = { penaltyPlayerId = player.id },
+                                        // Auto-radlci lock: pips are read-only status unless disabled
+                                        onRadlcTap = if (viewModel.settings.autoRadlci) null
+                                        else { index -> viewModel.toggleRadlc(player.id, index) },
                                     )
                                 }
-                            }
-                            Spacer(Modifier.weight(1f))
-                            Icon(
-                                if (isHistoryExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        AnimatedVisibility(visible = isHistoryExpanded) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (viewModel.gameHistory.isEmpty()) {
-                                    Text(
-                                        "Ni zabeleženih iger.\nDodaj prvo igro z gumbom + spodaj",
-                                        textAlign = TextAlign.Center,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 24.dp),
-                                    )
+                                val details = slot.kind as? PlayerCardSlot.Kind.Details
+                                if (details == null) {
+                                    card()
                                 } else {
-                                    viewModel.gameHistory.sortedByDescending { it.timestamp }.forEach { game ->
-                                        if (game.contract == TarokContract.KLOP) {
-                                            KlopGameCard(
-                                                game = game,
-                                                players = viewModel.players,
-                                                onTap = { editState = EditState.Editing(game) },
-                                                onLongPress = { gameToDelete = game },
-                                            )
-                                        } else {
-                                            GameHistoryCard(
-                                                game = game,
-                                                onTap = { editState = EditState.Editing(game) },
-                                                onLongPress = { gameToDelete = game },
-                                            )
+                                    val appear = remember { MutableTransitionState(false).apply { targetState = true } }
+                                    AnimatedVisibility(visibleState = appear, enter = fadeIn() + expandVertically(expandFrom = Alignment.Top)) {
+                                        Box {
+                                            card()
+                                            DetailsPointer(underLeftCard = details.underLeftCard)
                                         }
                                     }
                                 }
                             }
+
+                            // Game history section
+                            Column(modifier = Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { isHistoryExpanded = !isHistoryExpanded },
+                                ) {
+                                    Text("Zgodovina iger", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    if (viewModel.roundCount > 0) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                        ) {
+                                            Text(
+                                                "${viewModel.roundCount}",
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(
+                                        if (isHistoryExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+
+                                AnimatedVisibility(visible = isHistoryExpanded) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        if (viewModel.gameHistory.isEmpty()) {
+                                            Text(
+                                                "Ni zabeleženih iger.\nDodaj prvo igro z gumbom + spodaj",
+                                                textAlign = TextAlign.Center,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 24.dp),
+                                            )
+                                        } else {
+                                            viewModel.gameHistory.sortedByDescending { it.timestamp }.forEach { game ->
+                                                if (game.contract == TarokContract.KLOP) {
+                                                    KlopGameCard(
+                                                        game = game,
+                                                        players = viewModel.players,
+                                                        onTap = { editState = EditState.Editing(game) },
+                                                        onLongPress = { gameToDelete = game },
+                                                    )
+                                                } else {
+                                                    GameHistoryCard(
+                                                        game = game,
+                                                        onTap = { editState = EditState.Editing(game) },
+                                                        onLongPress = { gameToDelete = game },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(96.dp))   // room under the last row for the floating button
                         }
                     }
-                    Spacer(Modifier.height(96.dp))   // room under the last row for the floating button
+
+                    // Dealer and end-session pills float over the cards, like the + button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        FloatingPill(color = StihOrange, onClick = { showDealerMenu = true }, modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                Text("Deli", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    viewModel.getCurrentDealerName(), color = Color.White, fontSize = 13.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        FloatingPill(color = StihRed, onClick = { viewModel.endSession()?.let { onSessionCompleted(it) } }) {
+                            Text("Zaključi sejo", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        }
+                    }
                 }
             }
-
-            // Dealer and end-session pills float over the cards, like the + button
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                FloatingPill(color = StihOrange, onClick = { showDealerMenu = true }, modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        Icon(Icons.Filled.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        Text("Deli", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            viewModel.getCurrentDealerName(), color = Color.White, fontSize = 13.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            // Game entry open in its half: a new game, or the game picked in the history
+            val embeddedStepper: @Composable (Modifier) -> Unit = { stepperModifier ->
+                when (val state = editState) {
+                    is EditState.Editing -> key(state.game.id) {
+                        GameStepperSheet(
+                            players = viewModel.players,
+                            contractsWithPartner = contractsWithPartner,
+                            settings = viewModel.settings,
+                            initialGame = state.game,
+                            onSave = { entry ->
+                                viewModel.updateGameEntry(entry.copy(id = state.game.id))
+                                editState = EditState.Idle
+                            },
+                            onDelete = {
+                                viewModel.removeGameEntry(state.game.id)
+                                editState = EditState.Idle
+                            },
+                            onCancel = { editState = EditState.Idle },
+                            embedded = true,
+                            modifier = stepperModifier,
+                        )
+                    }
+                    else -> key(embeddedStepperKey, obvezniKlopPreselected) {
+                        GameStepperSheet(
+                            players = viewModel.players,
+                            contractsWithPartner = contractsWithPartner,
+                            settings = viewModel.settings,
+                            initialContract = obvezniKlopPreselected,
+                            onSave = { entry ->
+                                val result = TarokScorer.processGame(
+                                    entry, viewModel.players, viewModel.settings.rules.generalRules,
+                                )
+                                viewModel.addProcessedGameEntry(result.entry, result.players)
+                                editState = EditState.Idle
+                                obvezniKlopPreselected = null
+                                embeddedStepperKey++   // fresh, for the next round
+                            },
+                            onCancel = {
+                                editState = EditState.Idle
+                                obvezniKlopPreselected = null
+                                embeddedStepperKey++
+                            },
+                            embedded = true,
+                            modifier = stepperModifier,
                         )
                     }
                 }
-                FloatingPill(color = StihRed, onClick = { viewModel.endSession()?.let { onSessionCompleted(it) } }) {
-                    Text("Zaključi sejo", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+
+            when (split) {
+                GameSplit.NONE -> playersPane(Modifier.fillMaxSize())
+                GameSplit.SIDE_BY_SIDE -> Row(Modifier.fillMaxSize()) {
+                    playersPane(Modifier.weight(1f).fillMaxHeight())
+                    Spacer(Modifier.width(16.dp))   // clear of the fold
+                    embeddedStepper(Modifier.weight(1f).fillMaxHeight().padding(end = 12.dp, bottom = 8.dp))
+                }
+                GameSplit.STACKED -> {
+                    // The bottom half ends at the fold (or the middle of the screen), not the middle of this view
+                    val density = LocalDensity.current
+                    val splitAtPx = fold?.bottomPx?.toFloat() ?: (rootView.height / 2f)
+                    val bottomDp = with(density) { (contentBottomPx - splitAtPx).coerceAtLeast(320.dp.toPx()).toDp() }
+                    Column(Modifier.fillMaxSize()) {
+                        playersPane(Modifier.weight(1f).fillMaxWidth())
+                        Spacer(Modifier.height(16.dp))
+                        embeddedStepper(
+                            Modifier.fillMaxWidth().height(bottomDp - 16.dp)
+                                .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                        )
+                    }
                 }
             }
 
@@ -409,8 +511,8 @@ fun MainGameScreen(
         }
     }
 
-    // Add / edit steppers
-    when (val state = editState) {
+    // Add / edit steppers (sheets at phone size; wide screens have them open in their half)
+    if (split == GameSplit.NONE) when (val state = editState) {
         is EditState.Adding -> GameStepperSheet(
             players = viewModel.players,
             contractsWithPartner = contractsWithPartner,
