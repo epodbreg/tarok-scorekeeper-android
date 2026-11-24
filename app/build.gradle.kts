@@ -22,8 +22,8 @@ android {
         applicationId = "com.epodbreg.stih"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.8"
+        versionCode = 7
+        versionName = "1.9"
     }
 
     signingConfigs {
